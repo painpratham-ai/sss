@@ -429,8 +429,8 @@ export function pickAutoModel(question: string, opts: { webNeeded?: boolean; nee
     if (MODELS.groq.available) return 'groq';
   }
 
-  // 6. Default → GLM (cheapest, ICSE-tuned)
-  return 'glm';
+  // 6. Default → Gemini 2.5 Flash if available, else GLM (cheapest, ICSE-tuned)
+  return MODELS.gemini_2_5_flash.available ? 'gemini_2_5_flash' : 'glm';
 }
 
 // ─── Unified model caller ──────────────────────────────────

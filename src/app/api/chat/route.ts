@@ -10,6 +10,7 @@ import {
   getSession,
   type ChatMessage
 } from '@/lib/chat';
+import { type ModelId } from '@/lib/models';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
       subject?: string;
       forceReasoning?: boolean;
       forceWebSearch?: boolean;
-      preferredModel?: 'auto' | 'glm' | 'openai' | 'deepseek' | 'grok';
+      preferredModel?: ModelId;
       board?: string;
     };
 
