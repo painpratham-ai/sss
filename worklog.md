@@ -284,3 +284,43 @@ Stage Summary:
 - AI tutor now has TWO search modes: AUTO (smart triggers detect current-events/off-syllabus questions) and MANUAL (user toggles "Web search" on)
 - Every web-searched response shows a visible 🌐 badge so students know the answer came from the internet (not the ICSE KB)
 - KB-grounded ICSE questions still use RAG only (no wasted web calls) — threshold 35 ensures strong ICSE matches suppress web search
+
+---
+Task ID: 13
+Agent: main
+Task: Multi-model AI router (GLM + OpenAI + DeepSeek + Grok) with auto-fallback + user selection
+
+Work Log:
+- SECURITY: User pasted 3 API keys in chat — added to .env (gitignored), warned user to rotate
+- Installed `openai` npm package (OpenAI-compatible client works for OpenAI, DeepSeek, xAI)
+- Created src/lib/models.ts — multi-provider router with:
+  • 5 models: auto, glm (GLM-4.6), openai (GPT-4o), deepseek (DeepSeek V3/R1), grok (Grok-2)
+  • Each model has: name, provider, description, capabilities, best_for, cost, latency, why_better
+  • pickAutoModel() — routes math→DeepSeek, code→GPT-4o, current-events→Grok, default→GLM
+  • callModel() — tries preferred model first, auto-falls back to others on rate limit/error
+  • Fallback order: [primary, glm, deepseek, openai, grok] (excluding primary)
+- Updated src/lib/chat.ts to use multi-model router instead of hardcoded GLM
+- ChatResponse now includes: model, modelUsed, fallbackUsed, fallbackReason, attemptedModels
+- Updated POST /api/chat to accept preferredModel param + return model metadata
+- Created GET /api/models endpoint — returns all models with capabilities + availability
+- Updated TutorTab.tsx:
+  • Added model selector dropdown (next to subject filter) with all 5 models
+  • Tooltip on hover shows full capability description, best_for, why_better, cost, latency
+  • Added 🧠 model badge to message footer (violet color) showing which model was used
+  • ⚠ fallback indicator appears if primary model failed and fallback was used
+- Tested all 4 providers:
+  • GLM-4.6: ✅ Works (default, always available)
+  • DeepSeek: ❌ 402 Insufficient Balance (key works but account has no credits)
+  • OpenAI: ❌ 403 Country/region not supported (sandbox region blocked)
+  • Grok: ❌ 400 Incorrect API key (key invalid)
+- Auto-fallback works: when primary model fails, system automatically tries next model and succeeds
+- Lint clean
+- Verified in browser: model selector shows all 5 options, message footer shows "glm ⚠ fallback · builtin"
+
+Stage Summary:
+- Multi-model system LIVE — users can pick any of 5 models from dropdown
+- Auto mode intelligently routes questions to the best model (math→DeepSeek, code→GPT-4o, web→Grok, default→GLM)
+- Auto-fallback ensures reliability — if one provider fails, others take over automatically
+- User can see which model answered each question via the 🧠 badge in the footer
+- ⚠ fallback indicator shows when primary model failed
+- NOTE: 3 of 4 external API keys have issues (DeepSeek no balance, OpenAI region blocked, Grok invalid key) — user needs to fix these on their provider dashboards. GLM-4.6 always works as the reliable fallback.

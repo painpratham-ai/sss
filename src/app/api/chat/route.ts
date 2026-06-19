@@ -17,12 +17,13 @@ export const maxDuration = 120;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, sessionId, subject, forceReasoning, forceWebSearch } = body as {
+    const { message, sessionId, subject, forceReasoning, forceWebSearch, preferredModel } = body as {
       message?: string;
       sessionId?: string;
       subject?: string;
       forceReasoning?: boolean;
       forceWebSearch?: boolean;
+      preferredModel?: 'auto' | 'glm' | 'openai' | 'deepseek' | 'grok';
     };
 
     if (!message || message.trim().length < 2) {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     addToSession(sid, { role: 'user', content: message });
 
-    const response = await chatWithTutor(message, history, { subject, forceReasoning, forceWebSearch });
+    const response = await chatWithTutor(message, history, { subject, forceReasoning, forceWebSearch, preferredModel });
 
     addToSession(sid, {
       role: 'assistant',
@@ -59,7 +60,12 @@ export async function POST(req: NextRequest) {
       cached: response.cached,
       durationMs: response.durationMs,
       backend: response.backend,
-      webSearched: response.webSearched || false
+      webSearched: response.webSearched || false,
+      model: response.model,
+      modelUsed: response.modelUsed,
+      fallbackUsed: response.fallbackUsed || false,
+      fallbackReason: response.fallbackReason,
+      attemptedModels: response.attemptedModels || []
     });
   } catch (err: any) {
     console.error('Chat error:', err);

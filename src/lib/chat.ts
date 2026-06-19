@@ -13,7 +13,9 @@
 import ZAI from 'z-ai-web-dev-sdk';
 import { retrieve, type RetrievedChunk } from './knowledge';
 import { cachedLLM } from './llm-cache';
+import { callModel, type ModelId, type RouterResult } from './models';
 
+// Keep getZai for web search only
 let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null;
 async function getZai() {
   if (!zaiInstance) zaiInstance = await ZAI.create();
@@ -33,6 +35,11 @@ export interface ChatResponse {
   durationMs: number;
   backend: 'builtin' | 'openclaw' | 'demo';
   webSearched?: boolean;
+  model?: ModelId;
+  modelUsed?: ModelId;
+  fallbackUsed?: boolean;
+  fallbackReason?: string;
+  attemptedModels?: ModelId[];
 }
 
 // ─── Subject auto-detection ────────────────────────────────
@@ -186,7 +193,7 @@ function needsWebSearch(question: string, kbChunks: RetrievedChunk[]): boolean {
 export async function chatWithTutor(
   question: string,
   history: ChatMessage[] = [],
-  opts: { forceReasoning?: boolean; forceWebSearch?: boolean; subject?: string } = {}
+  opts: { forceReasoning?: boolean; forceWebSearch?: boolean; subject?: string; preferredModel?: ModelId } = {}
 ): Promise<ChatResponse> {
   const startedAt = Date.now();
 
@@ -285,23 +292,25 @@ ${fullContext}`;
     const { content, cached } = await cachedLLM(
       messages,
       async () => {
-        const zai = await getZai();
-        const completion: any = await zai.chat.completions.create({
-          messages: messages.map(m => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content
-          })) as any,
-          thinking: { type: needsThink ? 'enabled' : 'disabled' }
+        // Use multi-model router with auto-fallback
+        const result: RouterResult = await callModel({
+          messages,
+          temperature,
+          thinking: needsThink,
+          preferredModel: opts.preferredModel || 'auto',
+          question,
+          webNeeded: webSearched,
+          needsReasoning: needsThink
         });
-        // Extract reasoning if the SDK returns it as a separate field
-        const msg = completion.choices[0]?.message || {};
-        let result = msg.content || '';
-        // Some models return reasoning separately
-        if (msg.reasoning || msg.reasoning_content || msg.thinking) {
-          const reasoning = msg.reasoning || msg.reasoning_content || msg.thinking;
-          result = `<<REASONING>>${reasoning}\n\n<<ANSWER>>${result}`;
+
+        let answerContent = result.content;
+        // If reasoning present, wrap in marker for extraction below
+        if (result.reasoning) {
+          answerContent = `<<REASONING>>${result.reasoning}\n\n<<ANSWER>>${answerContent}`;
         }
-        return result;
+        // Append model metadata for the wrapper to extract
+        answerContent += `\n\n<<MODEL>>${result.model}<<FALLBACK>>${result.fallbackUsed ? 'true' : 'false'}<<ATTEMPTED>>${result.attemptedModels.join(',')}<<DURATION>>${result.durationMs}`;
+        return answerContent;
       },
       { temperature }
     );
@@ -321,6 +330,20 @@ ${fullContext}`;
       answer = answer.replace(/<think>[\s\S]*?<\/think>/i, '').trim();
     }
 
+    // Extract model metadata
+    let modelUsed: ModelId = 'glm';
+    let fallbackUsed = false;
+    let attemptedModels: ModelId[] = [];
+    let modelDuration = 0;
+    const modelMatch = answer.match(/<<MODEL>>(\w+)<<FALLBACK>>(true|false)<<ATTEMPTED>>([\w,]+)<<DURATION>>(\d+)/);
+    if (modelMatch) {
+      modelUsed = modelMatch[1] as ModelId;
+      fallbackUsed = modelMatch[2] === 'true';
+      attemptedModels = modelMatch[3].split(',') as ModelId[];
+      modelDuration = parseInt(modelMatch[4], 10);
+      answer = answer.replace(/<<MODEL>>.*<<DURATION>>\d+/, '').trim();
+    }
+
     return {
       answer,
       reasoning,
@@ -330,7 +353,12 @@ ${fullContext}`;
       cached,
       durationMs: Date.now() - startedAt,
       backend: 'builtin',
-      webSearched
+      webSearched,
+      model: opts.preferredModel || 'auto',
+      modelUsed,
+      fallbackUsed,
+      fallbackReason: fallbackUsed ? 'Primary model failed, used fallback' : undefined,
+      attemptedModels
     };
   } catch (err: any) {
     throw new Error(`Chat failed: ${err.message}`);

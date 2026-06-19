@@ -47,6 +47,10 @@ interface TutorMessage {
   durationMs?: number;
   backend?: ChatBackend;
   webSearched?: boolean;
+  model?: string;
+  modelUsed?: string;
+  fallbackUsed?: boolean;
+  attemptedModels?: string[];
 }
 
 interface ChatApiResponse {
@@ -58,6 +62,11 @@ interface ChatApiResponse {
   durationMs: number;
   backend: ChatBackend;
   webSearched?: boolean;
+  model?: string;
+  modelUsed?: string;
+  fallbackUsed?: boolean;
+  fallbackReason?: string;
+  attemptedModels?: string[];
 }
 
 interface ChatStatusResponse {
@@ -107,6 +116,8 @@ export function TutorTab() {
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [subject, setSubject] = useState<string>('auto');
+  const [preferredModel, setPreferredModel] = useState<string>('auto');
+  const [modelsData, setModelsData] = useState<{ models: any[]; available: string[] } | null>(null);
   const [forceReasoning, setForceReasoning] = useState(false);
   const [forceWebSearch, setForceWebSearch] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -136,6 +147,14 @@ export function TutorTab() {
     }
   }, []);
 
+  // ── Fetch available models on mount ────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/models')
+      .then(r => r.json())
+      .then(data => setModelsData(data))
+      .catch(() => setModelsData(null));
+  }, []);
+
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
@@ -158,6 +177,7 @@ export function TutorTab() {
         message: text,
         forceReasoning,
         forceWebSearch,
+        preferredModel,
       };
       if (currentSessionId) payload.sessionId = currentSessionId;
       if (subject && subject !== 'auto') payload.subject = subject;
@@ -173,7 +193,7 @@ export function TutorTab() {
       }
       return data as ChatApiResponse;
     },
-    [forceReasoning, forceWebSearch, subject],
+    [forceReasoning, forceWebSearch, subject, preferredModel],
   );
 
   // ── Append an assistant message from a ChatApiResponse ──────────────────
@@ -190,6 +210,10 @@ export function TutorTab() {
         durationMs: chatData.durationMs,
         backend: chatData.backend,
         webSearched: chatData.webSearched,
+        model: chatData.model,
+        modelUsed: chatData.modelUsed,
+        fallbackUsed: chatData.fallbackUsed,
+        attemptedModels: chatData.attemptedModels,
       },
     ]);
   }, []);
@@ -307,6 +331,43 @@ export function TutorTab() {
 
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <BackendStatusBadge status={status} loading={statusLoading} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Select value={preferredModel} onValueChange={setPreferredModel}>
+                      <SelectTrigger
+                        id="tutor-model"
+                        className="h-9 w-[130px]"
+                        aria-label="AI model selector"
+                      >
+                        <SelectValue placeholder="Model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(modelsData?.models || []).filter(m => m.available).map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{m.name}</span>
+                              <span className="text-[10px] text-muted-foreground">{m.provider}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    {(() => {
+                      const m = modelsData?.models?.find((x: any) => x.id === preferredModel);
+                      return m ? (
+                        <div className="space-y-1">
+                          <p className="font-medium">{m.name} ({m.provider})</p>
+                          <p className="text-xs">{m.description}</p>
+                          <p className="text-xs"><strong>Best for:</strong> {m.best_for.join(', ')}</p>
+                          <p className="text-xs"><strong>Why better:</strong> {m.why_better}</p>
+                          <p className="text-xs"><strong>Cost:</strong> ${m.cost_per_1k_tokens}/1K tokens · <strong>Latency:</strong> ~{m.avg_latency_ms}ms</p>
+                        </div>
+                      ) : 'Select a model';
+                    })()}
+                  </TooltipContent>
+                </Tooltip>
                 <Select value={subject} onValueChange={setSubject}>
                   <SelectTrigger
                     id="tutor-subject"
@@ -771,8 +832,8 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
           </div>
         )}
 
-        {/* Footer: cached + duration + backend + web search */}
-        {(message.cached || durationLabel || message.backend || message.webSearched) && (
+        {/* Footer: cached + duration + backend + web search + model */}
+        {(message.cached || durationLabel || message.backend || message.webSearched || message.modelUsed) && (
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
             {message.cached && (
               <span className="inline-flex items-center gap-1 text-brand">
@@ -797,9 +858,25 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
                 </span>
               </>
             )}
-            {message.backend && (
+            {message.modelUsed && (
               <>
                 {(message.cached || durationLabel || message.webSearched) && (
+                  <span aria-hidden className="text-muted-foreground/40">·</span>
+                )}
+                <span className="inline-flex items-center gap-1 font-medium text-violet-600 dark:text-violet-400">
+                  <Brain className="size-3" aria-hidden />
+                  <span>{message.modelUsed}</span>
+                  {message.fallbackUsed && (
+                    <span className="text-amber-600 dark:text-amber-400" title={`Fallback from ${message.attemptedModels?.[0] || 'primary'}`}>
+                      ⚠ fallback
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
+            {message.backend && (
+              <>
+                {(message.cached || durationLabel || message.webSearched || message.modelUsed) && (
                   <span aria-hidden className="text-muted-foreground/40">·</span>
                 )}
                 <span
