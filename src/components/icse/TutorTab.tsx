@@ -111,7 +111,7 @@ function formatDuration(ms?: number): string | null {
 // Main component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function TutorTab() {
+export function TutorTab({ board = 'ICSE' }: { board?: string }) {
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -178,6 +178,7 @@ export function TutorTab() {
         forceReasoning,
         forceWebSearch,
         preferredModel,
+        board,
       };
       if (currentSessionId) payload.sessionId = currentSessionId;
       if (subject && subject !== 'auto') payload.subject = subject;
@@ -193,7 +194,7 @@ export function TutorTab() {
       }
       return data as ChatApiResponse;
     },
-    [forceReasoning, forceWebSearch, subject, preferredModel],
+    [forceReasoning, forceWebSearch, subject, preferredModel, board],
   );
 
   // ── Append an assistant message from a ChatApiResponse ──────────────────

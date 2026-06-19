@@ -6,6 +6,7 @@ import { ICSE_SEED, type SeedChunk } from './icse-knowledge';
 import { db } from './db';
 
 export interface RetrievedChunk {
+  board: string;
   subject: string;
   className: string;
   category: string;
@@ -13,7 +14,7 @@ export interface RetrievedChunk {
   title: string;
   content: string;
   tags: string;
-  score: number; // 0-1, higher = more relevant
+  score: number;
 }
 
 // In-memory index of ALL knowledge (seed + user-added). Built once, refreshed when DB changes.
@@ -21,26 +22,24 @@ let memoryIndex: RetrievedChunk[] | null = null;
 let lastDbCount = -1;
 
 async function loadIndex(): Promise<RetrievedChunk[]> {
-  // Always check DB count — if new chunks were added (by this process or another),
-  // rebuild the index. This is a cheap COUNT(*) query.
   const dbCount = await db.knowledgeChunk.count();
   if (memoryIndex && dbCount === lastDbCount) return memoryIndex;
 
   const fromDb = await db.knowledgeChunk.findMany({
     select: {
-      subject: true, className: true, category: true, chapter: true,
+      board: true, subject: true, className: true, category: true, chapter: true,
       title: true, content: true, tags: true
     }
   });
 
   const seedMapped: RetrievedChunk[] = ICSE_SEED.map(c => ({
-    subject: c.subject, className: c.className, category: c.category,
+    board: 'ICSE', subject: c.subject, className: c.className, category: c.category,
     chapter: c.chapter, title: c.title, content: c.content,
     tags: c.tags, score: 0
   }));
 
   const dbMapped: RetrievedChunk[] = fromDb.map(c => ({
-    subject: c.subject, className: c.className, category: c.category,
+    board: c.board || 'ICSE', subject: c.subject, className: c.className, category: c.category,
     chapter: c.chapter, title: c.title, content: c.content,
     tags: c.tags, score: 0
   }));
@@ -62,6 +61,7 @@ export async function reloadKnowledgeBase(): Promise<void> {
 export async function retrieve(query: string, opts: {
   subject?: string;
   category?: string;
+  board?: string; // ICSE | CBSE | GENERAL
   topK?: number;
 } = {}): Promise<RetrievedChunk[]> {
   const index = await loadIndex();
@@ -81,6 +81,12 @@ export async function retrieve(query: string, opts: {
     // subject match boost
     if (opts.subject && chunk.subject.toLowerCase() === opts.subject.toLowerCase()) score *= 1.5;
     if (opts.category && chunk.category === opts.category) score *= 1.3;
+    // Board filtering: if board specified, prefer same-board chunks (but allow GENERAL)
+    if (opts.board) {
+      if (chunk.board === opts.board) score *= 2.0; // strong boost for same board
+      else if (chunk.board === 'GENERAL') score *= 1.0; // neutral for general
+      else score *= 0.1; // heavily penalize other board
+    }
     return { ...chunk, score: score / Math.max(haystack.length, 1) * 1000 };
   });
 
@@ -94,12 +100,13 @@ export async function retrieve(query: string, opts: {
 export async function buildContext(query: string, opts?: {
   subject?: string;
   category?: string;
+  board?: string;
   topK?: number;
 }): Promise<string> {
   const chunks = await retrieve(query, opts);
   if (chunks.length === 0) return '';
   return chunks.map((c, i) =>
-    `[${i + 1}] SUBJECT: ${c.subject} | CHAPTER: ${c.chapter} | CATEGORY: ${c.category}\nTITLE: ${c.title}\n${c.content}`
+    `[${i + 1}] BOARD: ${c.board} | SUBJECT: ${c.subject} | CHAPTER: ${c.chapter} | CATEGORY: ${c.category}\nTITLE: ${c.title}\n${c.content}`
   ).join('\n\n---\n\n');
 }
 
@@ -107,16 +114,23 @@ export async function getKnowledgeStats() {
   const index = await loadIndex();
   const subjects = Array.from(new Set(index.map(c => c.subject)));
   const categories = Array.from(new Set(index.map(c => c.category)));
+  const boards = Array.from(new Set(index.map(c => c.board)));
+  const icseCount = index.filter(c => c.board === 'ICSE').length;
+  const cbseCount = index.filter(c => c.board === 'CBSE').length;
   return {
     totalChunks: index.length,
     subjects,
     categories,
+    boards,
+    icseChunks: icseCount,
+    cbseChunks: cbseCount,
     lastLoadedAt: new Date().toISOString()
   };
 }
 
 // Add user-contributed knowledge (from the ingestion UI)
 export async function addKnowledge(chunk: {
+  board?: string;
   subject: string;
   className: string;
   category: string;
@@ -128,6 +142,7 @@ export async function addKnowledge(chunk: {
 }): Promise<void> {
   await db.knowledgeChunk.create({
     data: {
+      board: chunk.board || 'ICSE',
       subject: chunk.subject,
       className: chunk.className,
       category: chunk.category,

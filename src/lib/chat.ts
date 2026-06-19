@@ -193,16 +193,17 @@ function needsWebSearch(question: string, kbChunks: RetrievedChunk[]): boolean {
 export async function chatWithTutor(
   question: string,
   history: ChatMessage[] = [],
-  opts: { forceReasoning?: boolean; forceWebSearch?: boolean; subject?: string; preferredModel?: ModelId } = {}
+  opts: { forceReasoning?: boolean; forceWebSearch?: boolean; subject?: string; preferredModel?: ModelId; board?: string } = {}
 ): Promise<ChatResponse> {
   const startedAt = Date.now();
+  const board = opts.board || 'ICSE';
 
-  // 1. Detect subject + retrieve relevant knowledge
+  // 1. Detect subject + retrieve relevant knowledge (board-filtered)
   const subject = opts.subject || detectSubject(question);
   const needsThink = opts.forceReasoning ?? needsReasoning(question);
 
   const retrieved: RetrievedChunk[] = await retrieve(question, {
-    subject, topK: 6
+    subject, topK: 6, board
   });
 
   // 1b. Web search: forced by user OR auto-triggered
@@ -251,24 +252,29 @@ Answer with step-by-step reasoning where appropriate.`;
     }
   }
 
-  // 3. Built-in GLM-4.6 with reasoning
-  const systemPrompt = `You are the ICSE TUTOR — an expert, patient, encouraging tutor for Indian students preparing for the ICSE Class 9-10 board exams.
+  // 3. Built-in GLM-4.6 with reasoning — board-aware system prompt
+  const boardName = board === 'CBSE' ? 'CBSE (Central Board of Secondary Education)' : 'ICSE (Council for the Indian School Certificate Examinations)';
+  const boardContext = board === 'CBSE'
+    ? `CBSE Class 10 syllabus, NCERT textbooks, CBSE marking scheme, CBSE sample papers, CBSE previous year questions (PYQs). CBSE subjects: Science, Mathematics (Standard/Basic), Social Science, English (Language & Literature), Hindi (A/B), Sanskrit, Computer Applications.`
+    : `ICSE Class 10 syllabus, ICSE textbooks, ICSE marking scheme, ICSE specimen papers, ICSE past board questions. ICSE subjects: Physics, Chemistry, Biology, Mathematics, History & Civics, Geography, English, Computer Applications, Economics.`;
+
+  const systemPrompt = `You are the ${board} TUTOR — an expert, patient, encouraging tutor for Indian students preparing for the ${boardName} Class 9-10 board exams.
 
 Your capabilities:
-- Deep knowledge of ICSE syllabus across Physics, Chemistry, Biology, Mathematics, History, Geography, Civics, English, Computer Applications, and Economics
-- Access to REAL past ICSE board questions (2021-2026) and high-scoring project exemplars
+- Deep knowledge of ${boardContext}
+- Access to REAL past ${board} board questions (2017-2026) and high-scoring project exemplars
 - Step-by-step reasoning for numerical problems, derivations, and conceptual explanations
-- Exam-focused: always tie answers to mark allocation and board expectations
+- Exam-focused: always tie answers to mark allocation and ${board} board expectations
 ${webSearched ? '- WEB SEARCH was used to fetch current information — cite URLs when using web results, and verify accuracy' : ''}
 
 When answering:
 1. ALWAYS ground your answer in the provided KNOWLEDGE CONTEXT. Reference which past papers or exemplars inform your answer.
 2. For numerical/derivation questions: show FULL step-by-step working with units and significant figures.
-3. For definitions: give the precise ICSE-board-accepted definition (1-2 sentences).
+3. For definitions: give the precise ${board}-board-accepted definition (1-2 sentences).
 4. For "compare/distinguish": use a structured table.
 5. For "explain why/how": use clear reasoning chains — "Because X, therefore Y, which means Z".
-6. If a topic is not in ICSE syllabus, politely redirect: "This topic is not in the ICSE Class 10 syllabus. The related ICSE topic is..."
-7. End answers with a "💡 Exam tip" line where relevant — practical advice on avoiding common mistakes or what examiners look for.
+6. If a topic is not in ${board} syllabus, politely redirect: "This topic is not in the ${board} Class 10 syllabus. The related ${board} topic is..."
+7. End answers with a "💡 Exam tip" line where relevant — practical advice on avoiding common mistakes or what ${board} examiners look for.
 8. Use simple, clear Indian-English. Define jargon before use.
 ${webSearched ? '9. WEB SEARCH results were used — mention "According to web sources..." and include the URL when citing.' : ''}
 
@@ -276,7 +282,7 @@ ${needsThink
   ? 'This question requires REASONING. Think step by step before giving the final answer. Show your reasoning process clearly.'
   : 'This is a recall/short-answer question. Answer concisely (under 80 words) but accurately.'}
 
-KNOWLEDGE CONTEXT (from ICSE database — use these as your source of truth):
+KNOWLEDGE CONTEXT (from ${board} database — use these as your source of truth):
 ${fullContext}`;
 
   const recentHistory = history.slice(-6);

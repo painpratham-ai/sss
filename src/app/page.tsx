@@ -13,9 +13,13 @@ import { PastProjectsTab } from '@/components/icse/PastProjectsTab';
 import { KnowledgeBaseTab } from '@/components/icse/KnowledgeBaseTab';
 import { MockGeneratorTab } from '@/components/icse/MockGeneratorTab';
 import { TutorTab } from '@/components/icse/TutorTab';
+import { AuthBar } from '@/components/icse/AuthBar';
 import type { PipelineResponse, UploadResponse } from '@/components/icse/types';
 
 export default function Home() {
+  // Board state (lifted up — drives all AI behavior)
+  const [board, setBoard] = useState<string>('ICSE');
+
   // Step 1 upload state
   const [upload, setUpload] = useState<UploadResponse | null>(null);
   const [subject, setSubject] = useState('');
@@ -85,14 +89,16 @@ export default function Home() {
                   </div>
                   <div>
                     <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                      ICSE Project Forge
+                      {board} Project Forge
                     </h1>
                     <p className="text-sm text-muted-foreground sm:text-base">
-                      AI-forged ICSE projects with diagrams + mock papers — trained on ICSE board data
+                      AI-forged {board} projects with diagrams + mock papers — trained on {board} board data
                     </p>
                   </div>
                 </div>
-                <Sparkles className="hidden size-5 text-brand sm:block" aria-hidden />
+                <div className="flex items-center gap-3">
+                  <AuthBar onBoardChange={setBoard} />
+                </div>
               </div>
 
               <StatChips variant="hero" />
@@ -168,7 +174,7 @@ export default function Home() {
 
             {/* AI Tutor tab */}
             <TabsContent value="tutor" className="mt-6 outline-none">
-              <TutorTab />
+              <TutorTab board={board} />
             </TabsContent>
 
             {/* Past Projects tab */}

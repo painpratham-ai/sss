@@ -403,3 +403,46 @@ Stage Summary:
 - DeepSeek is now FREE (via GitHub) instead of paid — better than original plan
 - GitHub Models also unlocks GPT-4o, Llama, Mistral Large, etc. for free if needed later
 - This is the SAME calorimetry answer AutoClaw demoed — our system now matches that quality at $0 cost
+
+---
+Task ID: 5
+Agent: frontend-styling-expert
+Task: Build AuthBar — login/signup dialog + board selector + user dropdown for the header
+
+Work Log:
+- Read worklog to understand the project state — ICSE Project Forge, Next.js 16, shadcn/ui, emerald `--brand` palette, sonner toast, 5 tabs (Workflow / AI Tutor / Past Projects / Knowledge Base / Mock Generator). Backend auth APIs already exist at /api/auth/{me,login,signup,logout,board}.
+- Inspected all 5 auth route handlers to lock the exact request/response shapes: signup takes {email, password, name?, board?, className?} → returns {user:{id,email,name,board,className}} + cookie. login takes {email, password}. board takes {board: 'ICSE'|'CBSE'}. me returns {user|null}. logout returns {ok:true}.
+- Audited the shadcn primitives actually available: Dialog (+ Header/Title/Description/Footer/Content), DropdownMenu (+ Trigger/Content/Item/Label/Separator), RadioGroup (+ Item), Select (+ Trigger/Content/Item/Value), Avatar (+ Fallback), Badge, Button, Input, Label, Separator — all present and confirmed their exact export lists.
+- Confirmed brand utility classes in globals.css (`bg-brand`, `text-brand`, `bg-brand-soft`, `text-brand-foreground`, `border-brand`) and the emerald `--brand: oklch(0.55 0.13 155)` palette — no indigo/blue used.
+- Created `/home/z/my-project/src/components/icse/AuthBar.tsx` (~470 lines, single file, `'use client'`):
+  • **On mount**: `GET /api/auth/me` with `cache: 'no-store'` → if logged in, set user state + fire `onBoardChange(user.board)` so the parent page picks up the persisted board. Shows a `size-8` pulse skeleton while fetching.
+  • **Logged out**: compact row of `[Sign in (ghost)] [Get started (brand)]` buttons. "Get started" label collapses to "Sign up" on mobile.
+  • **Logged in**: horizontal cluster of three elements:
+    1. Board toggle pill group (ICSE | CBSE) — desktop only, active side gets `bg-brand text-brand-foreground` + shadow, spinner shows during switch.
+    2. Compact board `Badge` (`bg-brand-soft text-brand`) — mobile only.
+    3. Avatar (`bg-brand` circle with user initial) + name (md+ only, truncated to 10rem) wrapped in a DropdownMenuTrigger button.
+  • **Dropdown** contents: label (name + email), inline Board switcher (two mini buttons), Class badge, separator, destructive `Sign out` item (LogOut icon). Logout POSTs to /api/auth/logout, clears local user, fires `onBoardChange('ICSE')` so parent UI reverts to default.
+  • **Auth dialog** (shadcn Dialog, `sm:max-w-md`): brand-colored GraduationCap in the title, mode toggle (Sign in / Create account) styled like a segmented control, then a form with:
+    – Signup: Name (optional, User icon), Email (Mail icon), Password (Lock icon, min 6 chars client-side check), Board RadioGroup (two big selectable cards defaulting to ICSE, active card uses `border-brand bg-brand-soft text-brand`), Class Select (Class 9 / Class 10, default 10).
+    – Login: just Email + Password.
+    – Footer has a "no account? Sign up" / "already have an account? Sign in" inline link + a brand-colored submit button with Loader2 spinner when submitting.
+  • **All toasts via sonner**: success on login ("Welcome back, {name}!"), success on signup ("Account created — welcome to Project Forge!"), success on board switch ("Switched to {board} board"), success on logout ("Signed out"), error on validation / API failure / network errors.
+  • **Responsive**: desktop shows full inline cluster; mobile hides the name + the toggle pill group and substitutes a compact board badge. Dialog itself is `sm:max-w-md` so it stacks nicely on small screens.
+  • All fetches use relative paths (`/api/auth/signup`, etc.) as instructed.
+  • `onBoardChange` fires in 4 places: initial `/me` load, after login, after signup, after board switch, and after logout (resetting to ICSE) — so the parent page can re-render TutorTab, AgentPipeline, etc. with the new board.
+- Verified eslint config is very permissive (most TS/react rules off), but still wrote clean idiomatic code with proper types.
+- Did NOT modify page.tsx — main agent will wire `<AuthBar onBoardChange={setBoard} />` into the header.
+
+Verification:
+- `bun run lint` → clean (0 errors, 0 warnings) after removing one unused eslint-disable directive.
+- `bunx tsc --noEmit` → no AuthBar-related errors (only pre-existing unrelated errors in examples/, skills/, src/lib/models.ts).
+
+Stage Summary:
+- AuthBar is ready to drop into the header. Recommended wiring for the main agent:
+  ```tsx
+  import { AuthBar } from '@/components/icse/AuthBar';
+  // in the header's top-right area:
+  <AuthBar onBoardChange={(b) => setBoard(b)} />
+  ```
+- The component handles everything: loading state, logged-out CTA, logged-in avatar+board+dropdown, login/signup dialog with board/class selection, board switching, logout. Parent page just needs to lift the `board` state up and pass it down to TutorTab/AgentPipeline/etc.
+- No new dependencies. Uses only existing shadcn components, lucide-react icons, and sonner toast.

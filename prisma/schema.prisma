@@ -1,5 +1,5 @@
-// ICSE Project Tool — Prisma schema
-// SQLite database storing: projects, agent runs, knowledge base, mocks, uploads
+// ICSE/CBSE Project Tool — Prisma schema
+// SQLite database storing: users, projects, agent runs, knowledge base, mocks, uploads
 
 generator client {
   provider = "prisma-client-js"
@@ -10,21 +10,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============ Authentication ============
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String   // hashed via bcrypt
+  board     String   @default("ICSE") // ICSE | CBSE
+  className String   @default("10") @map("class_name")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+}
+
 // ============ Core entities ============
 
 model Project {
   id          String      @id @default(cuid())
   title       String
   subject     String
-  className   String      @map("class_name") // ICSE Class 9 or 10
+  className   String      @map("class_name")
   topic       String
-  status      String      @default("pending") // pending | processing | completed | failed
+  board       String      @default("ICSE") // ICSE | CBSE
+  userId      String?     @map("user_id")
+  status      String      @default("pending")
   sourceText  String      @default("") @map("source_text")
-  sourceName  String      @default("") @map("source_name") // original PDF filename
-  outline     String      @default("") // JSON: agent outline
-  finalOutput String      @default("") @map("final_output") // markdown final project
-  images      String      @default("[]") // JSON array of image refs
-  agentLogs   String      @default("[]") // JSON array of agent run logs
+  sourceName  String      @default("") @map("source_name")
+  outline     String      @default("")
+  finalOutput String      @default("") @map("final_output")
+  images      String      @default("[]")
+  agentLogs   String      @default("[]")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -36,10 +51,11 @@ model Mock {
   projectId   String?  @map("project_id")
   subject     String
   className   String   @map("class_name")
+  board       String   @default("ICSE")
   topic       String
-  difficulty  String   @default("medium") // easy | medium | hard
-  questions   String   // JSON array of {q, options?, answer, marks, type}
-  duration    Int      @default(120) // minutes
+  difficulty  String   @default("medium")
+  questions   String
+  duration    Int      @default(120)
   createdAt   DateTime @default(now()) @map("created_at")
 
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -49,27 +65,29 @@ model Mock {
 
 model KnowledgeChunk {
   id          String   @id @default(cuid())
-  subject     String   // Physics | Chemistry | Biology | Math | History | Geography | Civics | English | Computer | Economics | General
+  board       String   @default("ICSE") // ICSE | CBSE | GENERAL
+  subject     String
   className   String   @default("10") @map("class_name")
-  category    String   // syllabus | specimen_pattern | past_paper | textbook_summary | project_exemplar | glossary | rubric
+  category    String
   chapter     String   @default("")
   title       String
-  content     String   // the actual text chunk
-  tags        String   @default("") // comma-separated
-  source      String   @default("manual") // manual | user_upload | web
+  content     String
+  tags        String   @default("")
+  source      String   @default("manual")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  @@index([subject, className, category])
+  @@index([board, subject, className, category])
   @@index([subject, chapter])
+  @@index([board])
 }
 
-// ============ Cache (response + image dedupe) ============
+// ============ Cache ============
 
 model CacheEntry {
   id          String   @id @default(cuid())
-  cacheKey    String   @unique @map("cache_key") // sha256 of inputs
-  kind        String   // llm | image | mock
-  value       String   // cached payload (text or image path)
+  cacheKey    String   @unique @map("cache_key")
+  kind        String
+  value       String
   createdAt   DateTime @default(now()) @map("created_at")
   hits        Int      @default(0)
 }

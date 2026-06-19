@@ -17,13 +17,14 @@ export const maxDuration = 120;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, sessionId, subject, forceReasoning, forceWebSearch, preferredModel } = body as {
+    const { message, sessionId, subject, forceReasoning, forceWebSearch, preferredModel, board } = body as {
       message?: string;
       sessionId?: string;
       subject?: string;
       forceReasoning?: boolean;
       forceWebSearch?: boolean;
       preferredModel?: 'auto' | 'glm' | 'openai' | 'deepseek' | 'grok';
+      board?: string;
     };
 
     if (!message || message.trim().length < 2) {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     addToSession(sid, { role: 'user', content: message });
 
-    const response = await chatWithTutor(message, history, { subject, forceReasoning, forceWebSearch, preferredModel });
+    const response = await chatWithTutor(message, history, { subject, forceReasoning, forceWebSearch, preferredModel, board });
 
     addToSession(sid, {
       role: 'assistant',
