@@ -101,42 +101,81 @@ async function parseJsonFile(filePath: string): Promise<{ chunks: ParsedChunk[];
 
   // Pattern 0: PDF-extracted content array [{file_name, year, subject, content: [{page, text}]}]
   // (the icse_kb_*.json files from user's laptop PDF extraction)
+  // SPLIT INTO PAGE-LEVEL CHUNKS — NO TRUNCATION, every line captured.
   if (Array.isArray(data) && data.length > 0 && data[0]?.file_name && data[0]?.content) {
     for (const paper of data) {
       const subject = normalizeSubject(paper.subject || 'Unknown');
       const year = String(paper.year || 'unknown');
       const paperType = paper.type || 'PYQ';
       const fileName = paper.file_name || '';
+      const totalPages = paper.pages || (paper.content || []).length;
 
-      // Concatenate all page texts
-      const pageTexts = (paper.content || []).map((p: any) => {
-        if (typeof p === 'string') return p;
-        if (p?.text) return `--- Page ${p.page || '?'} ---\n${p.text}`;
-        return '';
-      }).filter((t: string) => t.trim().length > 20);
+      const pages = (paper.content || []);
+      if (pages.length === 0) continue;
 
-      if (pageTexts.length === 0) continue;
-      const fullText = pageTexts.join('\n\n');
-      if (fullText.trim().length < 100) continue; // skip near-empty
+      // Strategy: group pages into ~3500-char chunks (with 200-char overlap)
+      // so we capture EVERY line without truncation, and each chunk is small enough
+      // for precise RAG retrieval.
+      const CHUNK_SIZE = 3500;
+      const OVERLAP = 200;
 
-      // Truncate to 8000 chars per paper (RAG chunk size limit)
-      const truncated = fullText.slice(0, 8000);
+      let currentChunk = '';
+      let currentChunkStartPage = 1;
+      let chunkIndex = 1;
 
-      chunks.push({
-        subject,
-        className: '10',
-        category: 'past_paper',
-        chapter: year,
-        title: `${subject} ${year} ${paperType} — ICSE Class 10 (${paper.pages || '?'} pages, ${paper.chars || truncated.length} chars)`,
-        content: `ICSE Class 10 ${subject} — ${paperType} Paper from ${year}
-Source file: ${fileName}
+      for (let i = 0; i < pages.length; i++) {
+        const p = pages[i];
+        const pageNum = (typeof p === 'object' && p?.page) ? p.page : (i + 1);
+        const pageText = typeof p === 'string' ? p : (p?.text || '');
+        if (pageText.trim().length < 10) continue;
 
-${truncated}`,
-        tags: `${subject.toLowerCase()},past,paper,${year},${paperType.toLowerCase()},icse,class10,pdf-extracted`,
-        source: 'user_upload'
-      });
+        const pageHeader = `--- Page ${pageNum} ---\n`;
+        const candidate = currentChunk + pageHeader + pageText + '\n\n';
+
+        if (candidate.length > CHUNK_SIZE && currentChunk.length > 0) {
+          // Flush current chunk
+          chunks.push({
+            subject,
+            className: '10',
+            category: 'past_paper',
+            chapter: year,
+            title: `${subject} ${year} ${paperType} — Part ${chunkIndex} (pages ${currentChunkStartPage}-${i}) — ICSE Class 10`,
+            content: `ICSE Class 10 ${subject} — ${paperType} Paper from ${year}
+Source: ${fileName} | Part ${chunkIndex} of paper | Pages ${currentChunkStartPage}-${i} of ${totalPages}
+
+${currentChunk.trim()}`,
+            tags: `${subject.toLowerCase()},past,paper,${year},${paperType.toLowerCase()},icse,class10,pdf-extracted,part${chunkIndex}`,
+            source: 'user_upload'
+          });
+
+          // Start new chunk with overlap (last 200 chars of previous)
+          const overlap = currentChunk.slice(-OVERLAP);
+          currentChunk = overlap + pageHeader + pageText + '\n\n';
+          currentChunkStartPage = pageNum;
+          chunkIndex++;
+        } else {
+          currentChunk = candidate;
+        }
+      }
+
+      // Flush final chunk
+      if (currentChunk.trim().length > 50) {
+        chunks.push({
+          subject,
+          className: '10',
+          category: 'past_paper',
+          chapter: year,
+          title: `${subject} ${year} ${paperType} — Part ${chunkIndex} (pages ${currentChunkStartPage}-${totalPages}) — ICSE Class 10`,
+          content: `ICSE Class 10 ${subject} — ${paperType} Paper from ${year}
+Source: ${fileName} | Part ${chunkIndex} of paper | Pages ${currentChunkStartPage}-${totalPages} of ${totalPages}
+
+${currentChunk.trim()}`,
+          tags: `${subject.toLowerCase()},past,paper,${year},${paperType.toLowerCase()},icse,class10,pdf-extracted,part${chunkIndex}`,
+          source: 'user_upload'
+        });
+      }
     }
-    return { chunks, format: 'pdf_extracted' };
+    return { chunks, format: 'pdf_extracted_pages' };
   }
 
   // Pattern 1: { meta, papers: [...] } — past papers format
