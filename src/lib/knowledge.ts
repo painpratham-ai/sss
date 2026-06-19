@@ -17,54 +17,80 @@ export interface RetrievedChunk {
   score: number;
 }
 
-// In-memory index of ALL knowledge (seed + user-added). Built once, refreshed when DB changes.
-let memoryIndex: RetrievedChunk[] | null = null;
+// In-memory LIGHTWEIGHT index (title + tags only — NOT full content).
+// Full content is fetched on-demand per chunk after retrieval ranks them.
+// This keeps memory low even with 10K+ chunks.
+interface LightChunk {
+  id: string;
+  board: string;
+  subject: string;
+  className: string;
+  category: string;
+  chapter: string;
+  title: string;
+  tags: string;
+}
+
+let lightIndex: LightChunk[] | null = null;
 let lastDbCount = -1;
 
-async function loadIndex(): Promise<RetrievedChunk[]> {
+async function loadLightIndex(): Promise<LightChunk[]> {
   const dbCount = await db.knowledgeChunk.count();
-  if (memoryIndex && dbCount === lastDbCount) return memoryIndex;
+  if (lightIndex && dbCount === lastDbCount) return lightIndex;
 
   const fromDb = await db.knowledgeChunk.findMany({
     select: {
-      board: true, subject: true, className: true, category: true, chapter: true,
-      title: true, content: true, tags: true
+      id: true, board: true, subject: true, className: true, category: true,
+      chapter: true, title: true, tags: true
     }
   });
 
-  const seedMapped: RetrievedChunk[] = ICSE_SEED.map(c => ({
+  const seedLight: LightChunk[] = ICSE_SEED.map((c, i) => ({
+    id: `seed_${i}`,
     board: 'ICSE', subject: c.subject, className: c.className, category: c.category,
-    chapter: c.chapter, title: c.title, content: c.content,
-    tags: c.tags, score: 0
+    chapter: c.chapter, title: c.title, tags: c.tags
   }));
 
-  const dbMapped: RetrievedChunk[] = fromDb.map(c => ({
+  const dbLight: LightChunk[] = fromDb.map(c => ({
+    id: c.id,
     board: c.board || 'ICSE', subject: c.subject, className: c.className, category: c.category,
-    chapter: c.chapter, title: c.title, content: c.content,
-    tags: c.tags, score: 0
+    chapter: c.chapter, title: c.title, tags: c.tags
   }));
 
-  memoryIndex = [...seedMapped, ...dbMapped];
+  lightIndex = [...seedLight, ...dbLight];
   lastDbCount = dbCount;
-  return memoryIndex;
+  return lightIndex;
 }
 
 // Allow forcing reload after new user uploads
 export async function reloadKnowledgeBase(): Promise<void> {
-  memoryIndex = null;
+  lightIndex = null;
   lastDbCount = -1;
-  await loadIndex();
+  await loadLightIndex();
+}
+
+// Fetch full content for a specific chunk by ID (on-demand)
+async function fetchChunkContent(id: string): Promise<string> {
+  if (id.startsWith('seed_')) {
+    const seedIdx = parseInt(id.replace('seed_', ''), 10);
+    return ICSE_SEED[seedIdx]?.content || '';
+  }
+  const chunk = await db.knowledgeChunk.findUnique({
+    where: { id },
+    select: { content: true }
+  });
+  return chunk?.content || '';
 }
 
 // Simple but effective retrieval: term-frequency + metadata boost.
-// This avoids needing an embedding model — keeps cost zero.
+// Uses lightweight index (title+tags only) for scoring, then fetches full content for top results.
 export async function retrieve(query: string, opts: {
   subject?: string;
   category?: string;
-  board?: string; // ICSE | CBSE | GENERAL
+  board?: string;
   topK?: number;
 } = {}): Promise<RetrievedChunk[]> {
-  const index = await loadIndex();
+  const index = await loadLightIndex();
   const topK = opts.topK ?? 5;
   const terms = query.toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -72,28 +98,36 @@ export async function retrieve(query: string, opts: {
     .filter(t => t.length > 2);
 
   const scored = index.map(chunk => {
-    const haystack = `${chunk.title} ${chunk.tags} ${chunk.content}`.toLowerCase();
+    const haystack = `${chunk.title} ${chunk.tags}`.toLowerCase();
     let score = 0;
     for (const term of terms) {
       const matches = (haystack.match(new RegExp(term, 'g')) || []).length;
       score += matches;
     }
-    // subject match boost
     if (opts.subject && chunk.subject.toLowerCase() === opts.subject.toLowerCase()) score *= 1.5;
     if (opts.category && chunk.category === opts.category) score *= 1.3;
-    // Board filtering: if board specified, prefer same-board chunks (but allow GENERAL)
     if (opts.board) {
-      if (chunk.board === opts.board) score *= 2.0; // strong boost for same board
-      else if (chunk.board === 'GENERAL') score *= 1.0; // neutral for general
-      else score *= 0.1; // heavily penalize other board
+      if (chunk.board === opts.board) score *= 2.0;
+      else if (chunk.board === 'GENERAL') score *= 1.0;
+      else score *= 0.1;
     }
     return { ...chunk, score: score / Math.max(haystack.length, 1) * 1000 };
   });
 
-  return scored
+  const topResults = scored
     .filter(c => c.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
+
+  // Fetch full content for top results (on-demand, parallel)
+  const withContent = await Promise.all(
+    topResults.map(async (c) => {
+      const content = await fetchChunkContent(c.id);
+      return { ...c, content, score: c.score };
+    })
+  );
+
+  return withContent;
 }
 
 // Build a context string for LLM prompts
@@ -106,12 +140,12 @@ export async function buildContext(query: string, opts?: {
   const chunks = await retrieve(query, opts);
   if (chunks.length === 0) return '';
   return chunks.map((c, i) =>
-    `[${i + 1}] BOARD: ${c.board} | SUBJECT: ${c.subject} | CHAPTER: ${c.chapter} | CATEGORY: ${c.category}\nTITLE: ${c.title}\n${c.content}`
+    `[${i + 1}] BOARD: ${c.board} | SUBJECT: ${c.subject} | CHAPTER: ${c.chapter} | CATEGORY: ${c.category}\nTITLE: ${c.title}\n${c.content.slice(0, 1500)}`
   ).join('\n\n---\n\n');
 }
 
 export async function getKnowledgeStats() {
-  const index = await loadIndex();
+  const index = await loadLightIndex();
   const subjects = Array.from(new Set(index.map(c => c.subject)));
   const categories = Array.from(new Set(index.map(c => c.category)));
   const boards = Array.from(new Set(index.map(c => c.board)));
