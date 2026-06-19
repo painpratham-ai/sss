@@ -74,7 +74,7 @@ export async function retrieve(query: string, opts: {
     const categoryFilter = opts.category ? `AND k.category = '${opts.category.replace(/'/g, "''")}'` : '';
 
     const sql = Prisma.sql`
-      SELECT k.id, k.board, k.subject, k.className, k.category, k.chapter,
+      SELECT k.id, k.board, k.subject, k.class_name as className, k.category, k.chapter,
              k.title, k.content, k.tags,
              -bm25(KnowledgeChunk_fts) as score
       FROM KnowledgeChunk_fts
