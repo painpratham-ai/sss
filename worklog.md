@@ -166,3 +166,49 @@ Stage Summary:
   Note: the TabsList grid is currently `grid-cols-2 sm:grid-cols-4` — when adding a 5th tab, change to `grid-cols-2 sm:grid-cols-5` (or keep 4 + wrap).
 - Behavior verified against /api/chat contract: POST returns { sessionId, answer, reasoning?, sources, cached, durationMs } — all consumed correctly; GET and DELETE also wired
 - No issues / no blockers
+
+---
+Task ID: 3
+Agent: frontend-styling-expert
+Task: Build ICSE Tutor chatbot UI component
+
+Work Log:
+- Read worklog.md to understand prior agent work — discovered a previous iteration (Task ID 4) had already produced a TutorTab.tsx but with significant gaps vs. the brief: missing backend status badge, only 6 suggested questions (brief required 10), missing `backend` field in message footer, custom error div instead of shadcn Alert, plain overflow div instead of shadcn ScrollArea, and stale subtitle copy.
+- Read existing ICSE tab components (KnowledgeBaseTab, MockGeneratorTab) to lock the exact visual idiom: bg-brand text-brand-foreground buttons, bg-brand-soft text-brand chips, prose-icse markdown container, motion from framer-motion, toast from sonner, Tooltip wrapping icon buttons.
+- Read globals.css to confirm `.prose-icse` typography stylesheet and brand utility classes (`.bg-brand`, `.bg-brand-soft`, `.text-brand`, `.text-amber-strong`, `.bg-amber-soft`) are already defined.
+- Audited available shadcn primitives in `src/components/ui/`: confirmed ScrollArea, Skeleton, Alert (+ AlertTitle + AlertDescription), Collapsible, Switch, Select, Tooltip, Badge, Textarea all present. Textarea uses `field-sizing-content` so auto-grows for free.
+- Verified the backend API contract:
+  • POST /api/chat → `{ sessionId, answer, reasoning?, sources:[{title,subject,chapter?,category?}], cached, durationMs, backend: 'builtin'|'openclaw' }`
+  • DELETE /api/chat?sessionId=... → `{ ok: true }`
+  • GET /api/chat/status → `{ backend, openclawConfigured, openclawReachable }`
+- Rewrote `/home/z/my-project/src/components/icse/TutorTab.tsx` from scratch as a `'use client'` component with signature `export function TutorTab()` (no props, manages own state). Key features vs. brief:
+  • Card with header row — Brain icon in brand square + "ICSE AI Tutor" title + "Reasoning-powered · RAG-grounded on 130+ ICSE knowledge chunks" subtitle on left; BackendStatusBadge + subject Select + Clear icon button on right.
+  • BackendStatusBadge: fetches `/api/chat/status` on mount, shows Skeleton while loading; green pill "OpenClaw connected" with Circle dot when `backend==='openclaw' && openclawReachable`, else amber pill "Built-in AI" with tooltip "Set OPENCLAW_URL + OPENCLAW_TOKEN in .env to switch to OpenClaw".
+  • Messages area: shadcn ScrollArea, fixed `h-[480px] max-h-[480px]`, with inner `role="log"` + `aria-live="polite"` container.
+  • Empty state: heading "Ask me anything about ICSE Class 10" + ALL 10 suggested question chips from the brief in a 2-col grid (1-col on mobile). Clicking a chip sends immediately via `handleSend(q)`.
+  • User bubble: right-aligned, `bg-brand text-brand-foreground`, rounded-2xl with `rounded-br-md` corner, motion fade+slide-up (0.2s).
+  • Assistant bubble: left-aligned card with Brain avatar, contains `prose-icse`-rendered markdown answer, collapsible "🧠 Show reasoning" button (defaults collapsed, aria-expanded+aria-controls, monospace gray reasoning text in brand-soft panel), sources row (BookOpen header + Badge chips with Tooltip showing full title), footer with cached ⚡ (brand color) · durationMs (formatted as ms/s with tabular-nums) · backend (OpenClaw brand-color / builtin amber-color, with Circle dot icon).
+  • Loading state: pulsing Brain icon in brand-soft circle + "Thinking" text + staggered animated dots.
+  • Error state: shadcn Alert with `variant="destructive"`, AlertCircle icon, AlertTitle, AlertDescription with error message + Retry button (re-sends last user message via `handleRetry`).
+  • Input row: Textarea (auto-grow via field-sizing-content, 1 row min, max-h-200px, Enter sends / Shift+Enter newline) + Send button (bg-brand, Loader2 spinner while loading, "Send" label hidden on mobile).
+  • Input footer: "Force reasoning" Switch + hint "· always show 🧠 chain-of-thought" + right-aligned mono session id (`session xxxxxxxx…` or `new session`).
+  • Session management: first message has no sessionId → API returns one → stored and reused. Clear button calls DELETE then resets state.
+  • Subject filter: 'auto' (default, sends no subject param) + Physics/Chemistry/Biology/Mathematics/History/Geography/English/Computer/Economics.
+- Honored all constraints: `'use client'` at top, ONLY one file created (no page.tsx modification), all fetches use relative paths, no indigo/blue (only emerald `--brand`, amber-strong, destructive red), matches existing visual idiom of other tabs.
+- Accessibility: `role="log"` + `aria-live="polite"` on messages, `aria-label` on Send / Clear / Switch / Textarea / Select / BackendStatusBadge, `aria-expanded` + `aria-controls` on reasoning toggle, `sr-only` label on loading indicator, `role="status"` on backend badge, focus-visible rings on all interactive elements, keyboard accessible (Enter / Shift+Enter).
+- Ran `bun run lint` → 0 errors, 0 warnings (clean).
+- Ran `npx tsc --noEmit` → no errors in `src/components/icse/TutorTab.tsx` (only pre-existing unrelated errors in `examples/` and `skills/` directories outside my scope).
+- Verified dev server: GET http://localhost:3000/ → 200 OK.
+
+Stage Summary:
+- File produced: `/home/z/my-project/src/components/icse/TutorTab.tsx` (~570 lines, fully self-contained, manages own state, no props).
+- Lint: clean (0 errors, 0 warnings).
+- TypeScript: clean for the new file.
+- Component is ready to be wired into `src/app/page.tsx` — main agent should add a 5th tab. Recommended wiring:
+    `import { Brain } from 'lucide-react';`
+    `import { TutorTab } from '@/components/icse/TutorTab';`
+    `<TabsTrigger value="tutor" className="gap-1.5 py-2"><Brain className="size-4" /> AI Tutor</TabsTrigger>`
+    `<TabsContent value="tutor" className="mt-6 outline-none"><TutorTab /></TabsContent>`
+  Note: the existing TabsList uses `grid-cols-2 sm:grid-cols-4` — when adding the 5th tab, change to `grid-cols-2 sm:grid-cols-5` (or keep 4 + wrap).
+- Behavior verified against all three `/api/chat` endpoints (POST, DELETE, GET /status) and against every brief requirement (backend badge, 10 suggested questions, backend in footer, shadcn Alert+ScrollArea, Skeleton on initial load, force-reasoning switch, subject filter, markdown via prose-icse, collapsible reasoning, source tooltips).
+- No issues / no blockers.

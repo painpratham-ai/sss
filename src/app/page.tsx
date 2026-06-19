@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GraduationCap, Sparkles, FlaskConical, BookOpenCheck, FolderOpen, Wand2 } from 'lucide-react';
+import { GraduationCap, Sparkles, FlaskConical, BookOpenCheck, FolderOpen, Wand2, BrainCircuit } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { StatChips } from '@/components/icse/StatChips';
@@ -12,6 +12,7 @@ import { OutputViewer } from '@/components/icse/OutputViewer';
 import { PastProjectsTab } from '@/components/icse/PastProjectsTab';
 import { KnowledgeBaseTab } from '@/components/icse/KnowledgeBaseTab';
 import { MockGeneratorTab } from '@/components/icse/MockGeneratorTab';
+import { TutorTab } from '@/components/icse/TutorTab';
 import type { PipelineResponse, UploadResponse } from '@/components/icse/types';
 
 export default function Home() {
@@ -103,12 +104,16 @@ export default function Home() {
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
           <Tabs defaultValue="workflow" className="w-full">
             <TabsList
-              className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1 sm:grid-cols-4"
+              className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1 sm:grid-cols-5"
               aria-label="Primary navigation"
             >
               <TabsTrigger value="workflow" className="gap-1.5 py-2">
                 <Wand2 className="size-4" />
                 Workflow
+              </TabsTrigger>
+              <TabsTrigger value="tutor" className="gap-1.5 py-2">
+                <BrainCircuit className="size-4" />
+                AI Tutor
               </TabsTrigger>
               <TabsTrigger value="projects" className="gap-1.5 py-2">
                 <FolderOpen className="size-4" />
@@ -159,6 +164,11 @@ export default function Home() {
                   </AnimatePresence>
                 </div>
               </div>
+            </TabsContent>
+
+            {/* AI Tutor tab */}
+            <TabsContent value="tutor" className="mt-6 outline-none">
+              <TutorTab />
             </TabsContent>
 
             {/* Past Projects tab */}

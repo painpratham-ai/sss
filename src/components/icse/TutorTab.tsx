@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, Send, Trash2, Sparkles, BookOpen, Lightbulb, ChevronDown,
-  Loader2, AlertCircle, Zap, RotateCcw, BookMarked,
+  Circle, Loader2, Zap, RotateCcw, BookMarked, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,11 +14,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Tooltip, TooltipTrigger, TooltipContent,
+  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
 } from '@/components/ui/tooltip';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -32,6 +35,8 @@ interface ChatSource {
   category?: string;
 }
 
+type ChatBackend = 'builtin' | 'openclaw';
+
 interface TutorMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -40,6 +45,7 @@ interface TutorMessage {
   sources?: ChatSource[];
   cached?: boolean;
   durationMs?: number;
+  backend?: ChatBackend;
 }
 
 interface ChatApiResponse {
@@ -49,6 +55,13 @@ interface ChatApiResponse {
   sources: ChatSource[];
   cached: boolean;
   durationMs: number;
+  backend: ChatBackend;
+}
+
+interface ChatStatusResponse {
+  backend: ChatBackend;
+  openclawConfigured: boolean;
+  openclawReachable: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -59,9 +72,13 @@ const SUGGESTED_QUESTIONS: readonly string[] = [
   "Explain Ohm's Law with a numerical example",
   'What is the difference between arithmetic mean and median?',
   'Derive the lens formula for a convex lens',
-  'Why does ice float on water?',
-  'Balance: Fe + H2O → Fe3O4 + H2',
+  'Why does ice float on water? Explain with molecular structure.',
+  'Balance the equation: Fe + H2O → Fe3O4 + H2',
   'Explain the working of the human heart',
+  'What were the main causes of the 1857 revolt?',
+  'How do you solve a quadratic equation by factorization?',
+  'Explain the mole concept with formulas',
+  'Describe the process of photosynthesis with the chemical equation',
 ];
 
 const SUBJECT_OPTIONS: readonly string[] = [
@@ -92,10 +109,35 @@ export function TutorTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Backend status (fetched on mount)
+  const [status, setStatus] = useState<ChatStatusResponse | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the latest message whenever messages / loading / error change
+  // ── Fetch backend status on mount ──────────────────────────────────────
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const res = await fetch('/api/chat/status');
+      if (!res.ok) throw new Error('status fetch failed');
+      const data = (await res.json()) as ChatStatusResponse;
+      setStatus(data);
+    } catch {
+      // Silent fallback — defaults to a benign "unknown" state shown as built-in.
+      setStatus(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  // ── Auto-scroll to the latest message ──────────────────────────────────
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, []);
@@ -130,6 +172,23 @@ export function TutorTab() {
     [forceReasoning, subject],
   );
 
+  // ── Append an assistant message from a ChatApiResponse ──────────────────
+  const appendAssistant = useCallback((chatData: ChatApiResponse) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: uniqueId('a'),
+        role: 'assistant',
+        content: chatData.answer,
+        reasoning: chatData.reasoning,
+        sources: chatData.sources,
+        cached: chatData.cached,
+        durationMs: chatData.durationMs,
+        backend: chatData.backend,
+      },
+    ]);
+  }, []);
+
   // ── Send ────────────────────────────────────────────────────────────────
   const handleSend = useCallback(
     async (messageOverride?: string) => {
@@ -157,18 +216,7 @@ export function TutorTab() {
       try {
         const chatData = await callChatApi(text, currentSession);
         setSessionId(chatData.sessionId);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uniqueId('a'),
-            role: 'assistant',
-            content: chatData.answer,
-            reasoning: chatData.reasoning,
-            sources: chatData.sources,
-            cached: chatData.cached,
-            durationMs: chatData.durationMs,
-          },
-        ]);
+        appendAssistant(chatData);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Something went wrong';
         setError(msg);
@@ -176,12 +224,11 @@ export function TutorTab() {
         setLoading(false);
       }
     },
-    [input, loading, sessionId, callChatApi],
+    [input, loading, sessionId, callChatApi, appendAssistant],
   );
 
   // ── Retry last failed message ───────────────────────────────────────────
   const handleRetry = useCallback(async () => {
-    // Find the last user message
     const lastUser = [...messages].reverse().find((m) => m.role === 'user');
     if (!lastUser) {
       setError(null);
@@ -192,25 +239,14 @@ export function TutorTab() {
     try {
       const chatData = await callChatApi(lastUser.content, sessionId);
       setSessionId(chatData.sessionId);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uniqueId('a'),
-          role: 'assistant',
-          content: chatData.answer,
-          reasoning: chatData.reasoning,
-          sources: chatData.sources,
-          cached: chatData.cached,
-          durationMs: chatData.durationMs,
-        },
-      ]);
+      appendAssistant(chatData);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [messages, sessionId, callChatApi]);
+  }, [messages, sessionId, callChatApi, appendAssistant]);
 
   // ── Keyboard handler ────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -241,157 +277,228 @@ export function TutorTab() {
   const showEmptyState = messages.length === 0 && !loading && !error;
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div
-                className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-brand-foreground shadow-sm"
-                aria-hidden
-              >
-                <Brain className="size-5" />
-              </div>
-              <div className="space-y-1">
-                <CardTitle className="text-lg">ICSE AI Tutor</CardTitle>
-                <CardDescription className="flex items-center gap-1.5">
-                  <Sparkles className="size-3 text-brand" aria-hidden />
-                  <span>
-                    Reasoning-powered · RAG-grounded on 2700+ real past questions
-                  </span>
-                </CardDescription>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <Select value={subject} onValueChange={setSubject}>
-                <SelectTrigger
-                  id="tutor-subject"
-                  className="w-[140px]"
-                  aria-label="Subject filter"
+    <TooltipProvider delayDuration={200}>
+      <div className="mx-auto w-full max-w-3xl">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div
+                  className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-brand-foreground shadow-sm"
+                  aria-hidden
                 >
-                  <SelectValue placeholder="Subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Auto-detect</SelectItem>
-                  {SUBJECT_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => void handleClearChat()}
-                    aria-label="Clear chat"
-                    disabled={messages.length === 0 && !sessionId && !loading}
+                  <Brain className="size-5" />
+                </div>
+                <div className="space-y-1">
+                  <CardTitle className="text-lg">ICSE AI Tutor</CardTitle>
+                  <CardDescription className="flex flex-wrap items-center gap-1.5">
+                    <Sparkles className="size-3 text-brand" aria-hidden />
+                    <span>
+                      Reasoning-powered · RAG-grounded on 130+ ICSE knowledge chunks
+                    </span>
+                  </CardDescription>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <BackendStatusBadge status={status} loading={statusLoading} />
+                <Select value={subject} onValueChange={setSubject}>
+                  <SelectTrigger
+                    id="tutor-subject"
+                    className="h-9 w-[140px]"
+                    aria-label="Subject filter"
                   >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Clear conversation</TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {/* ── Messages area ─────────────────────────────────────────────── */}
-          <div
-            role="log"
-            aria-label="Chat messages"
-            aria-live="polite"
-            className="max-h-[500px] min-h-[280px] overflow-y-auto rounded-lg border bg-muted/20 p-4"
-          >
-            {showEmptyState ? (
-              <EmptyState
-                onPick={(q) => {
-                  void handleSend(q);
-                }}
-              />
-            ) : (
-              <div className="space-y-4">
-                <AnimatePresence initial={false}>
-                  {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} />
-                  ))}
-                </AnimatePresence>
-
-                {loading && <LoadingIndicator />}
-
-                <AnimatePresence>
-                  {error && (
-                    <ErrorAlert
-                      message={error}
-                      onRetry={() => void handleRetry()}
-                    />
-                  )}
-                </AnimatePresence>
+                    <SelectValue placeholder="Subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto-detect</SelectItem>
+                    {SUBJECT_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => void handleClearChat()}
+                      aria-label="Clear chat"
+                      disabled={messages.length === 0 && !sessionId && !loading}
+                      className="h-9 w-9"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Clear conversation</TooltipContent>
+                </Tooltip>
               </div>
-            )}
-            <div ref={messagesEndRef} className="scroll-mt-2" />
-          </div>
+            </div>
+          </CardHeader>
 
-          {/* ── Input row ────────────────────────────────────────────────── */}
-          <div className="space-y-2.5">
-            <div className="flex items-end gap-2">
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask your ICSE question — Enter to send, Shift+Enter for a new line"
-                className="max-h-[200px] min-h-[44px] resize-none"
-                aria-label="Message input"
-                rows={1}
-              />
-              <Button
-                onClick={() => void handleSend()}
-                disabled={!input.trim() || loading}
-                aria-label="Send message"
-                className="gap-1.5 bg-brand text-brand-foreground hover:bg-brand/90"
+          <CardContent className="space-y-4">
+            {/* ── Messages area ─────────────────────────────────────────────── */}
+            <ScrollArea
+              className="h-[480px] max-h-[480px] min-h-[280px] w-full rounded-lg border bg-muted/20"
+              aria-label="Chat messages"
+            >
+              <div
+                ref={scrollViewportRef}
+                role="log"
+                aria-live="polite"
+                aria-label="Chat messages"
+                className="p-4"
               >
-                {loading ? (
-                  <Loader2 className="size-4 animate-spin" />
+                {showEmptyState ? (
+                  <EmptyState
+                    onPick={(q) => {
+                      void handleSend(q);
+                    }}
+                  />
                 ) : (
-                  <Send className="size-4" />
-                )}
-                <span className="hidden sm:inline">Send</span>
-              </Button>
-            </div>
+                  <div className="space-y-4">
+                    <AnimatePresence initial={false}>
+                      {messages.map((m) => (
+                        <MessageBubble key={m.id} message={m} />
+                      ))}
+                    </AnimatePresence>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="force-reasoning"
-                  checked={forceReasoning}
-                  onCheckedChange={setForceReasoning}
-                  aria-label="Force chain-of-thought reasoning"
-                />
-                <Label
-                  htmlFor="force-reasoning"
-                  className="cursor-pointer select-none text-xs text-muted-foreground"
-                >
-                  Force reasoning
-                </Label>
+                    {loading && <LoadingIndicator />}
+
+                    <AnimatePresence>
+                      {error && (
+                        <ErrorAlert
+                          message={error}
+                          onRetry={() => void handleRetry()}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+                <div ref={messagesEndRef} className="scroll-mt-2" />
               </div>
-              <p className="font-mono text-[11px] text-muted-foreground">
-                {sessionId ? `session ${sessionId.slice(0, 8)}…` : 'new session'}
-              </p>
+            </ScrollArea>
+
+            {/* ── Input row ────────────────────────────────────────────────── */}
+            <div className="space-y-2.5">
+              <div className="flex items-end gap-2">
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask your ICSE question — Enter to send, Shift+Enter for a new line"
+                  className="max-h-[200px] min-h-[44px] resize-none"
+                  aria-label="Message input"
+                  rows={1}
+                />
+                <Button
+                  onClick={() => void handleSend()}
+                  disabled={!input.trim() || loading}
+                  aria-label="Send message"
+                  className="gap-1.5 bg-brand text-brand-foreground hover:bg-brand/90"
+                >
+                  {loading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  <span className="hidden sm:inline">Send</span>
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="force-reasoning"
+                    checked={forceReasoning}
+                    onCheckedChange={setForceReasoning}
+                    aria-label="Force chain-of-thought reasoning"
+                  />
+                  <Label
+                    htmlFor="force-reasoning"
+                    className="cursor-pointer select-none text-xs text-muted-foreground"
+                  >
+                    Force reasoning
+                  </Label>
+                  <span className="hidden text-[11px] text-muted-foreground/80 sm:inline">
+                    · always show 🧠 chain-of-thought
+                  </span>
+                </div>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {sessionId ? `session ${sessionId.slice(0, 8)}…` : 'new session'}
+                </p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </CardContent>
+        </Card>
+      </div>
+    </TooltipProvider>
   );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Empty state — suggested question chips
+// Backend status badge — green if OpenClaw connected, amber if built-in
+// ────────────────────────────────────────────────────────────────────────────
+
+function BackendStatusBadge({
+  status,
+  loading,
+}: {
+  status: ChatStatusResponse | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <Skeleton
+        className="h-9 w-[150px] rounded-md"
+        aria-label="Detecting AI backend"
+      />
+    );
+  }
+
+  const isOpenClaw = status?.backend === 'openclaw' && status.openclawReachable;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          role="status"
+          className={
+            'inline-flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium ' +
+            (isOpenClaw
+              ? 'border-brand/40 bg-brand-soft/50 text-brand'
+              : 'border-amber-strong/40 bg-amber-soft/60 text-amber-strong')
+          }
+        >
+          <Circle
+            className={'size-2 fill-current ' + (isOpenClaw ? 'text-brand' : 'text-amber-strong')}
+            aria-hidden
+          />
+          <span className="hidden sm:inline">
+            {isOpenClaw ? 'OpenClaw connected' : 'Built-in AI'}
+          </span>
+          <span className="sm:hidden">{isOpenClaw ? 'OpenClaw' : 'Built-in'}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        {isOpenClaw ? (
+          <p>OpenClaw reasoning backend is connected and reachable.</p>
+        ) : (
+          <p>
+            Built-in AI (GLM-4.6 reasoning). Set <code>OPENCLAW_URL</code> and{' '}
+            <code>OPENCLAW_TOKEN</code> in <code>.env</code> to switch to OpenClaw.
+          </p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Empty state — 10 suggested question chips
 // ────────────────────────────────────────────────────────────────────────────
 
 function EmptyState({ onPick }: { onPick: (q: string) => void }) {
@@ -409,10 +516,10 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
         >
           <Brain className="size-6" />
         </div>
-        <p className="text-base font-semibold">Ask the ICSE Tutor anything</p>
+        <p className="text-base font-semibold">Ask me anything about ICSE Class 10</p>
         <p className="mx-auto max-w-md text-sm text-muted-foreground">
-          Every answer is grounded in real ICSE board specimen papers, exemplars
-          and past questions. Try one of these to get started:
+          Every answer is grounded in the local knowledge base of specimen papers,
+          textbook extracts and exemplars. Try one of these to get started:
         </p>
       </div>
 
@@ -423,11 +530,15 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
             type="button"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, delay: i * 0.04 }}
+            transition={{ duration: 0.25, delay: i * 0.03 }}
             onClick={() => onPick(q)}
+            aria-label={`Ask: ${q}`}
             className="group flex items-start gap-2 rounded-lg border bg-card p-3 text-left text-sm shadow-sm transition-all hover:border-brand/40 hover:bg-brand-soft/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2"
           >
-            <Lightbulb className="mt-0.5 size-4 shrink-0 text-brand transition-transform group-hover:scale-110" aria-hidden />
+            <Lightbulb
+              className="mt-0.5 size-4 shrink-0 text-brand transition-transform group-hover:scale-110"
+              aria-hidden
+            />
             <span className="text-foreground">{q}</span>
           </motion.button>
         ))}
@@ -437,7 +548,7 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Loading indicator — animated dots
+// Loading indicator — pulsing Brain + "Thinking..."
 // ────────────────────────────────────────────────────────────────────────────
 
 function LoadingIndicator() {
@@ -454,9 +565,15 @@ function LoadingIndicator() {
         className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-soft text-brand"
         aria-hidden
       >
-        <Brain className="size-3.5" />
+        <motion.div
+          animate={{ scale: [1, 0.85, 1], opacity: [0.7, 1, 0.7] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <Brain className="size-3.5" />
+        </motion.div>
       </div>
       <div className="flex items-center gap-1.5 rounded-lg border bg-card px-3 py-2.5 shadow-sm">
+        <span className="text-xs font-medium text-muted-foreground">Thinking</span>
         <span className="sr-only">Tutor is thinking</span>
         {[0, 1, 2].map((i) => (
           <motion.span
@@ -469,6 +586,7 @@ function LoadingIndicator() {
               delay: i * 0.18,
               ease: 'easeInOut',
             }}
+            aria-hidden
           />
         ))}
       </div>
@@ -477,7 +595,7 @@ function LoadingIndicator() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Error alert
+// Error alert — uses shadcn Alert
 // ────────────────────────────────────────────────────────────────────────────
 
 function ErrorAlert({
@@ -493,24 +611,23 @@ function ErrorAlert({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       role="alert"
-      className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3"
     >
-      <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
-      <div className="flex-1 space-y-1.5">
-        <p className="text-sm font-medium text-destructive">
-          The tutor hit a snag
-        </p>
-        <p className="text-xs text-muted-foreground">{message}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRetry}
-          className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-        >
-          <RotateCcw className="size-3.5" />
-          Retry
-        </Button>
-      </div>
+      <Alert variant="destructive" className="items-start">
+        <AlertCircle className="size-4 shrink-0" aria-hidden />
+        <AlertTitle>The tutor hit a snag</AlertTitle>
+        <AlertDescription className="space-y-2">
+          <p>{message}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRetry}
+            className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <RotateCcw className="size-3.5" />
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
     </motion.div>
   );
 }
@@ -526,7 +643,7 @@ function MessageBubble({ message }: { message: TutorMessage }) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.25 }}
+        transition={{ duration: 0.2 }}
         className="flex justify-end"
       >
         <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-brand-foreground shadow-sm">
@@ -550,13 +667,14 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
   const sources = message.sources ?? [];
   const durationLabel = formatDuration(message.durationMs);
   const hasReasoning = Boolean(message.reasoning && message.reasoning.trim());
+  const isOpenClaw = message.backend === 'openclaw';
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.2 }}
       className="flex items-start gap-3"
     >
       <div
@@ -582,7 +700,7 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
               aria-controls={`reasoning-${message.id}`}
               className="flex items-center gap-1.5 text-xs font-medium text-brand transition-colors hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-1 rounded"
             >
-              <Brain className="size-3.5" aria-hidden />
+              <span aria-hidden>🧠</span>
               {showReasoning ? 'Hide reasoning' : 'Show reasoning'}
               <ChevronDown
                 className={`size-3.5 transition-transform ${showReasoning ? 'rotate-180' : ''}`}
@@ -604,7 +722,7 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
                       <Sparkles className="size-3" aria-hidden />
                       Chain of thought
                     </p>
-                    <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                    <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground">
                       {message.reasoning}
                     </p>
                   </div>
@@ -629,23 +747,39 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
           </div>
         )}
 
-        {/* Footer: cached + duration */}
-        {(message.cached || durationLabel) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-2 text-[11px] text-muted-foreground">
+        {/* Footer: cached + duration + backend */}
+        {(message.cached || durationLabel || message.backend) && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
             {message.cached && (
-              <Badge
-                variant="outline"
-                className="gap-1 border-amber-strong/40 text-amber-strong"
-              >
+              <span className="inline-flex items-center gap-1 text-brand">
                 <Zap className="size-3" aria-hidden />
-                cached
-              </Badge>
+                <span>cached</span>
+              </span>
             )}
             {durationLabel && (
               <span className="inline-flex items-center gap-1 tabular-nums">
                 <Sparkles className="size-3 text-brand" aria-hidden />
                 {durationLabel}
               </span>
+            )}
+            {message.backend && (
+              <>
+                {(message.cached || durationLabel) && (
+                  <span aria-hidden className="text-muted-foreground/40">·</span>
+                )}
+                <span
+                  className={
+                    'inline-flex items-center gap-1 font-medium ' +
+                    (isOpenClaw ? 'text-brand' : 'text-amber-strong')
+                  }
+                >
+                  <Circle
+                    className={'size-1.5 fill-current ' + (isOpenClaw ? 'text-brand' : 'text-amber-strong')}
+                    aria-hidden
+                  />
+                  {isOpenClaw ? 'OpenClaw' : 'builtin'}
+                </span>
+              </>
             )}
           </div>
         )}
@@ -655,7 +789,7 @@ function AssistantMessageCard({ message }: { message: TutorMessage }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Source chip with tooltip
+// Source chip with tooltip showing full title
 // ────────────────────────────────────────────────────────────────────────────
 
 function SourceChip({ source }: { source: ChatSource }) {

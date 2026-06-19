@@ -1,6 +1,6 @@
-// POST /api/chat — ICSE tutor chatbot with RAG + reasoning
+// POST /api/chat — ICSE tutor chatbot with RAG + reasoning (GLM-4.6 or OpenClaw)
 // Body: { message: string, sessionId?: string, subject?: string, forceReasoning?: boolean }
-// Returns: { sessionId, answer, reasoning?, sources, cached, durationMs }
+// Returns: { sessionId, answer, reasoning?, sources, cached, durationMs, backend }
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -28,23 +28,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Get or create session
     let sid = sessionId;
     if (!sid || !getSession(sid)) {
       sid = createSession();
     }
 
     const session = getSession(sid)!;
-    const history: ChatMessage[] = session.messages;
+    const history: ChatMessage[] = session.messages.map(m => ({ role: m.role, content: m.content }));
 
-    // Add user message to session
     addToSession(sid, { role: 'user', content: message });
 
-    // Get AI response
     const response = await chatWithTutor(message, history, { subject, forceReasoning });
 
-    // Add assistant response to session
-    addToSession(sid, { role: 'assistant', content: response.answer });
+    addToSession(sid, {
+      role: 'assistant',
+      content: response.answer,
+      reasoning: response.reasoning,
+      sources: response.sources,
+      cached: response.cached,
+      durationMs: response.durationMs,
+      backend: response.backend
+    });
 
     return NextResponse.json({
       sessionId: sid,
@@ -52,7 +56,8 @@ export async function POST(req: NextRequest) {
       reasoning: response.reasoning,
       sources: response.sources,
       cached: response.cached,
-      durationMs: response.durationMs
+      durationMs: response.durationMs,
+      backend: response.backend
     });
   } catch (err: any) {
     console.error('Chat error:', err);
@@ -60,7 +65,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/chat — get session history
 export async function GET(req: NextRequest) {
   const sid = req.nextUrl.searchParams.get('sessionId');
   if (!sid) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
@@ -74,7 +78,6 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// DELETE /api/chat — clear session
 export async function DELETE(req: NextRequest) {
   const sid = req.nextUrl.searchParams.get('sessionId');
   if (!sid) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
