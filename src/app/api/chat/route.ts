@@ -18,7 +18,7 @@ export const maxDuration = 120;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, sessionId, subject, forceReasoning, forceWebSearch, preferredModel, board } = body as {
+    const { message, sessionId, subject, forceReasoning, forceWebSearch, preferredModel, board, imageData, socratic, analogy } = body as {
       message?: string;
       sessionId?: string;
       subject?: string;
@@ -26,6 +26,9 @@ export async function POST(req: NextRequest) {
       forceWebSearch?: boolean;
       preferredModel?: ModelId;
       board?: string;
+      imageData?: string;
+      socratic?: boolean;
+      analogy?: string;
     };
 
     if (!message || message.trim().length < 2) {
@@ -40,9 +43,16 @@ export async function POST(req: NextRequest) {
     const session = getSession(sid)!;
     const history: ChatMessage[] = session.messages.map(m => ({ role: m.role, content: m.content }));
 
-    addToSession(sid, { role: 'user', content: message });
+    const userContent = imageData
+      ? [
+          { type: 'text', text: message },
+          { type: 'image_url', image_url: { url: imageData } }
+        ]
+      : message;
 
-    const response = await chatWithTutor(message, history, { subject, forceReasoning, forceWebSearch, preferredModel, board });
+    addToSession(sid, { role: 'user', content: userContent });
+
+    const response = await chatWithTutor(message, history, { subject, forceReasoning, forceWebSearch, preferredModel, board, imageData, socratic, analogy });
 
     addToSession(sid, {
       role: 'assistant',

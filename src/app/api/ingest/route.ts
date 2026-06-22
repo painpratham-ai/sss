@@ -14,16 +14,27 @@ export async function POST(req: NextRequest) {
     const dryRun = body.dryRun === true;
     const specificFile = body.file || null;
 
-    const args = ['bun', 'run', 'scripts/smart-ingest.ts'];
+    const hasBun = (() => {
+      try {
+        execSync('bun --version', { stdio: 'ignore' });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    const args = hasBun 
+      ? ['bun', 'run', 'scripts/smart-ingest.ts']
+      : ['npx', 'tsx', 'scripts/smart-ingest.ts'];
     if (dryRun) args.push('--dry-run');
     if (specificFile) { args.push('--file'); args.push(specificFile); }
 
     const output = execSync(args.join(' '), {
-      cwd: '/home/z/my-project',
+      cwd: process.cwd(),
       timeout: 240000,
       maxBuffer: 10 * 1024 * 1024,
       encoding: 'utf-8',
-      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+      shell: process.platform === 'win32' ? 'powershell.exe' : undefined
     });
 
     // Extract JSON from __JSON__ marker

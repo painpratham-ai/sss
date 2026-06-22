@@ -24,7 +24,7 @@ async function getZai() {
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: any;
 }
 
 export interface ChatResponse {
@@ -43,7 +43,7 @@ export interface ChatResponse {
 }
 
 // ─── Subject auto-detection ────────────────────────────────
-function detectSubject(question: string): string | undefined {
+export function detectSubject(question: string): string | undefined {
   const q = question.toLowerCase();
   const hints: Record<string, string[]> = {
     'Physics': ['force','energy','momentum','velocity','acceleration','ohm','current','voltage','resistance','lens','mirror','refraction','reflection','prism','spectrum','magnet','electromagnet','transformer','motor','heat','temperature','calorimetry','radioactivity','nuclear','work','power','machine','lever','pulley','echo','sound wave','amplitude','frequency','wavelength'],
@@ -82,7 +82,7 @@ function getOpenClawConfig(): { url: string; token: string } | null {
 }
 
 async function callOpenClaw(
-  message: string, history: ChatMessage[], config: { url: string; token: string }
+  message: string, history: ChatMessage[], config: { url: string; token: string }, board: string = 'ICSE'
 ): Promise<{ answer: string; reasoning?: string }> {
   // Build context-aware prompt for OpenClaw
   const recentHistory = history.slice(-6);
@@ -90,7 +90,7 @@ async function callOpenClaw(
     ? recentHistory.map(m => `${m.role === 'user' ? 'Student' : 'Tutor'}: ${m.content}`).join('\n')
     : '(no prior context)';
 
-  const wrappedMessage = `You are an ICSE Class 10 tutor grounded in the ICSE database (past papers, exemplars, glossary, exam guide).
+  const wrappedMessage = `You are a ${board} Class 10 tutor grounded in the ${board} database (past papers, exemplars, glossary, exam guide).
 
 CONVERSATION HISTORY:
 ${historyStr}
@@ -98,7 +98,7 @@ ${historyStr}
 STUDENT'S NEW QUESTION:
 ${message}
 
-Answer with step-by-step reasoning where appropriate. Cite which ICSE topic/chapter your answer relates to. Use simple Indian-English.`;
+Answer with step-by-step reasoning where appropriate. Cite which ${board} topic/chapter your answer relates to. Use simple Indian-English.`;
 
   const resp = await fetch(`${config.url}/v1/sessions`, {
     method: 'POST',
@@ -193,7 +193,7 @@ function needsWebSearch(question: string, kbChunks: RetrievedChunk[]): boolean {
 export async function chatWithTutor(
   question: string,
   history: ChatMessage[] = [],
-  opts: { forceReasoning?: boolean; forceWebSearch?: boolean; subject?: string; preferredModel?: ModelId; board?: string } = {}
+  opts: { forceReasoning?: boolean; forceWebSearch?: boolean; subject?: string; preferredModel?: ModelId; board?: string; imageData?: string; socratic?: boolean; analogy?: string } = {}
 ): Promise<ChatResponse> {
   const startedAt = Date.now();
   const board = opts.board || 'ICSE';
@@ -219,8 +219,8 @@ export async function chatWithTutor(
         `[${i + 1}] SUBJECT: ${c.subject} | CHAPTER: ${c.chapter} | CATEGORY: ${c.category}\nTITLE: ${c.title}\n${c.content.slice(0, 1500)}`
       ).join('\n\n---\n\n')
     : (webResults
-      ? `(No ICSE knowledge chunks matched. WEB SEARCH RESULTS used as context — verify accuracy.)`
-      : '(No specific ICSE chunks matched — use general ICSE knowledge.)');
+      ? `(No ${board} knowledge chunks matched. WEB SEARCH RESULTS used as context — verify accuracy.)`
+      : `(No specific ${board} chunks matched — use general ${board} knowledge.)`);
 
   const fullContext = retrieved.length > 0
     ? contextStr + (webResults ? `\n\n---\n\nADDITIONAL WEB SEARCH RESULTS (for current/external info):\n${webResults}` : '')
@@ -232,15 +232,16 @@ export async function chatWithTutor(
     try {
       const wrappedQ = `STUDENT QUESTION: ${question}
 
-ICSE KNOWLEDGE CONTEXT (from database — use as ground truth):
+${board} KNOWLEDGE CONTEXT (from database — use as ground truth):
 ${fullContext}
 
 Answer with step-by-step reasoning where appropriate.`;
-      const { answer, reasoning } = await callOpenClaw(wrappedQ, history, openclawConfig);
+      const { answer, reasoning } = await callOpenClaw(wrappedQ, history, openclawConfig, board);
       return {
         answer, reasoning,
         sources: retrieved.slice(0, 4).map(c => ({
-          title: c.title, subject: c.subject, chapter: c.chapter, category: c.category
+          title: c.title, subject: c.subject, chapter: c.chapter, category: c.category,
+          content: c.content
         })),
         cached: false,
         durationMs: Date.now() - startedAt,
@@ -260,6 +261,25 @@ Answer with step-by-step reasoning where appropriate.`;
 
   const systemPrompt = `You are the ${board} TUTOR — an expert, patient, encouraging tutor for Indian students preparing for the ${boardName} Class 9-10 board exams.
 
+INTERACTIVE QUIZ GENERATION RULE:
+If the student asks you for a quiz, test, mock, or practice questions on any topic, you MUST generate and embed an interactive quiz in your response using a markdown code block starting with \`\`\`interactive-quiz and ending with \`\`\`.
+Inside this code block, output ONLY a single valid JSON object following this schema:
+{
+  "title": "Quiz Title",
+  "questions": [
+    {
+      "q": "Question description...",
+      "type": "mcq", // or "fill_in_the_blank" or "short"
+      "marks": 1,
+      "options": ["Option A", "Option B", "Option C", "Option D"], // only for mcq
+      "answerIndex": 0, // only for mcq, 0-3 index
+      "answer": "Expected correct answer string", // for fill_in_the_blank or short
+      "explanation": "Simple brief explanation of the correct answer"
+    }
+  ]
+}
+Generate 3 to 5 questions. Make it highly engaging. Do not include markdown formatting or prose inside the \`\`\`interactive-quiz code block. You can write encouraging text before or after the code block in your normal tutor persona.
+
 Your capabilities:
 - Deep knowledge of ${boardContext}
 - Access to REAL past ${board} board questions (2017-2026) and high-scoring project exemplars
@@ -267,9 +287,21 @@ Your capabilities:
 - Exam-focused: always tie answers to mark allocation and ${board} board expectations
 ${webSearched ? '- WEB SEARCH was used to fetch current information — cite URLs when using web results, and verify accuracy' : ''}
 
+${
+  opts.socratic
+    ? `⚠️ SOCRATIC COACHING MODE ACTIVE: Do NOT give the student direct answers or completed equations. Instead, guide them Socratic-style. Ask short, encouraging questions that prompt them to recall a definition, formulate the next mathematical step, or identify an error. Keep your response brief so they can respond.`
+    : ''
+}
+
+${
+  opts.analogy
+    ? `🎭 CONCEPT ANALOGY ACTIVE: You must explain the topic's core concepts using a creative and detailed analogy based on the interest/theme: "${opts.analogy}". For example, use Cricket, Cooking, Video Games, or Movies, mapping its details (players, ingredients, health points, script) onto the topic variables (voltage, chemical formulas, forces, historical timelines).`
+    : ''
+}
+
 When answering:
 1. ALWAYS ground your answer in the provided KNOWLEDGE CONTEXT. Reference which past papers or exemplars inform your answer.
-2. For numerical/derivation questions: show FULL step-by-step working with units and significant figures.
+2. For numerical/derivation questions: show FULL step-by-step working with units and significant figures (unless Socratic Mode is active, in which case guide them through step 1).
 3. For definitions: give the precise ${board}-board-accepted definition (1-2 sentences).
 4. For "compare/distinguish": use a structured table.
 5. For "explain why/how": use clear reasoning chains — "Because X, therefore Y, which means Z".
@@ -286,10 +318,17 @@ KNOWLEDGE CONTEXT (from ${board} database — use these as your source of truth)
 ${fullContext}`;
 
   const recentHistory = history.slice(-6);
-  const messages: { role: string; content: string }[] = [
+  const currentUserContent = opts.imageData
+    ? [
+        { type: 'text', text: question },
+        { type: 'image_url', image_url: { url: opts.imageData } }
+      ]
+    : question;
+
+  const messages: { role: string; content: any }[] = [
     { role: 'assistant', content: systemPrompt },
     ...recentHistory.map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: question }
+    { role: 'user', content: currentUserContent }
   ];
 
   const temperature = needsThink ? 0.4 : 0.5;
@@ -306,7 +345,8 @@ ${fullContext}`;
           preferredModel: opts.preferredModel || 'auto',
           question,
           webNeeded: webSearched,
-          needsReasoning: needsThink
+          needsReasoning: needsThink,
+          hasImage: !!opts.imageData
         });
 
         let answerContent = result.content;
@@ -354,7 +394,8 @@ ${fullContext}`;
       answer,
       reasoning,
       sources: retrieved.slice(0, 4).map(c => ({
-        title: c.title, subject: c.subject, chapter: c.chapter, category: c.category
+        title: c.title, subject: c.subject, chapter: c.chapter, category: c.category,
+        content: c.content
       })),
       cached,
       durationMs: Date.now() - startedAt,

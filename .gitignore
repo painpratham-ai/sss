@@ -52,3 +52,18 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# SQLite databases and temp files
+db/custom.db
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+/db/*.db
+/db/*.db-shm
+/db/*.db-wal
+/db/*.db-journal
+
+# Temporary uploads and generated media
+/upload/
+/public/generated/

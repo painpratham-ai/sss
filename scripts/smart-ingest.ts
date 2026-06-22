@@ -13,7 +13,7 @@ import { execSync } from 'child_process';
 import { db } from '../src/lib/db';
 import { addKnowledge, reloadKnowledgeBase } from '../src/lib/knowledge';
 
-const UPLOAD_DIR = '/home/z/my-project/upload';
+const UPLOAD_DIR = path.join(process.cwd(), 'upload');
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -29,14 +29,18 @@ function fingerprint(content: string): string {
 }
 
 // Check if a chunk with similar title OR content already exists
-async function findDuplicate(title: string, content: string, subject?: string): Promise<boolean> {
+async function findDuplicate(title: string, content: string, subject?: string, board?: string, className?: string): Promise<boolean> {
   const normTitle = normalize(title);
   const fp = fingerprint(content);
 
   // Check by title — use FULL normalized title (not just first 80 chars)
   // because multiple PDFs can have same subject+year+type but different content
   const titleMatches = await db.knowledgeChunk.findMany({
-    where: subject ? { subject } : {},
+    where: {
+      ...(subject && { subject }),
+      ...(board && { board }),
+      ...(className && { className })
+    },
     select: { title: true, content: true }
   });
 
@@ -74,6 +78,7 @@ interface ParsedChunk {
   content: string;
   tags: string;
   source?: string;
+  board?: string;
 }
 
 // Auto-detect file type and parse into chunks
@@ -98,6 +103,113 @@ async function parseJsonFile(filePath: string): Promise<{ chunks: ParsedChunk[];
   const raw = await fs.readFile(filePath, 'utf-8');
   const data = JSON.parse(raw);
   const chunks: ParsedChunk[] = [];
+
+  const basename = path.basename(filePath).toLowerCase();
+
+  // Pattern 00: Array of structured chunks (e.g. cbse-class-*.json, isc-class12-*.json)
+  if (Array.isArray(data) && data.length > 0 && data[0]?.content && data[0]?.title) {
+    for (const item of data) {
+      chunks.push({
+        board: item.board || 'ICSE',
+        subject: normalizeSubject(item.subject || 'General'),
+        className: String(item.className || '10'),
+        category: item.category || 'syllabus',
+        chapter: item.chapter || '',
+        title: item.title,
+        content: item.content,
+        tags: item.tags || '',
+        source: item.source || 'user_upload'
+      });
+    }
+    return { chunks, format: 'structured_chunks' };
+  }
+
+  // Pattern A: YouTube Topper Video Catalog (yt_catalog.json)
+  if (basename.includes('yt_catalog.json') || (data.subjects && data.total_videos !== undefined)) {
+    const board = basename.includes('cbse') ? 'CBSE' : 'ICSE';
+    for (const [subjectKey, subData] of Object.entries(data.subjects || {})) {
+      const subjectName = normalizeSubject(subjectKey);
+      const videos = (subData as any).videos || [];
+      if (videos.length === 0) continue;
+
+      const videoSummaries = videos.slice(0, 25).map((v: any) =>
+        `- "${v.title}" by ${v.channel} (${v.view_count?.toLocaleString() || '?'} views, ${v.duration}s) — ${(v.description || '').slice(0, 200).replace(/\n/g, ' ')}`
+      ).join('\n');
+
+      const topTopics = videos.slice(0, 10).map((v: any) => v.title).join(' | ');
+
+      chunks.push({
+        subject: subjectName,
+        className: '10',
+        category: 'project_exemplar',
+        chapter: 'Topper Reference',
+        title: `${subjectName} — Real ${board} Class 10 Topper Project Videos (YouTube reference)`,
+        content: `These are real ${board} Class 10 ${subjectName} project walkthrough videos from YouTube toppers, useful for understanding what high-scoring projects look like and what topics students actually chose:
+
+POPULAR TOPPER PROJECT TOPICS:
+${topTopics}
+
+DETAILED VIDEO LIST (title, channel, views, description excerpt):
+${videoSummaries}
+
+Use these as inspiration for choosing project topics and understanding presentation style. Do NOT copy content — use only as reference for what worked.`,
+        tags: `${subjectKey},youtube,topper,videos,reference,topics`,
+        source: 'user_upload',
+        board
+      });
+    }
+    return { chunks, format: 'youtube_catalog' };
+  }
+
+  // Pattern B: YouTube Curated Queries & Validated Videos (youtube_curated.json)
+  if (basename === 'youtube_curated.json' || (data.search_queries_for_later_discovery && data.validated_reference_videos)) {
+    // 1. Search Queries
+    const queries = data.search_queries_for_later_discovery || {};
+    const qLines: string[] = [];
+    for (const [subj, qs] of Object.entries(queries)) {
+      const subjectName = normalizeSubject(subj);
+      qLines.push(`${subjectName}:`);
+      (qs as string[]).forEach(q => qLines.push(`  - ${q}`));
+    }
+    chunks.push({
+      subject: 'General',
+      className: '10',
+      category: 'project_exemplar',
+      chapter: 'Topic Discovery',
+      title: 'ICSE Class 10 — Curated Project Topic Search Queries (for finding more exemplars)',
+      content: `These are validated search queries that surface real ICSE Class 10 topper project files and walkthroughs on YouTube. Use them to discover additional project ideas and presentation patterns:
+
+${qLines.join('\n')}
+
+When a student asks for a project topic, suggest topics that appear in these searches — they are proven to score well.`,
+      tags: 'project,topics,discovery,youtube,queries',
+      source: 'user_upload'
+    });
+
+    // 2. Validated Videos
+    const validated = data.validated_reference_videos || [];
+    if (validated.length > 0) {
+      const vLines = validated.map((v: any) =>
+        `- Subject: ${normalizeSubject(v.subject)} | Title: "${v.title}" | Type: ${v.type} | Views: ${v.views} | Search URL: ${v.url}`
+      ).join('\n');
+      
+      chunks.push({
+        subject: 'General',
+        className: '10',
+        category: 'project_exemplar',
+        chapter: 'Topic Discovery',
+        title: 'ICSE Class 10 — Curated Topper Videos and Search Links',
+        content: `These are validated reference videos and search result lists showing high-scoring project work:
+
+${vLines}
+
+Use these specific references to demonstrate to students what a high-quality presentation looks like.`,
+        tags: 'project,youtube,links,validated',
+        source: 'user_upload'
+      });
+    }
+    return { chunks, format: 'youtube_curated' };
+  }
 
   // Pattern 0: PDF-extracted content array [{file_name, year, subject, content: [{page, text}]}]
   // (the icse_kb_*.json files from user's laptop PDF extraction)
@@ -228,6 +340,7 @@ ${currentChunk.trim()}`,
   for (const [subject, chapters] of Object.entries(data)) {
     if (!chapters || typeof chapters !== 'object') continue;
     for (const [chapter, chData] of Object.entries(chapters as any)) {
+      if (!chData || typeof chData !== 'object') continue;
       const keyTerms = (chData as any).key_terms || [];
       const formulas = (chData as any).formulas || [];
       if (keyTerms.length === 0 && formulas.length === 0) continue;
@@ -289,6 +402,8 @@ function normalizeSubject(s: string): string {
     'History & Civics': 'History',
     'Computer Applications': 'Computer',
     'Computer Science': 'Computer',
+    'Computer': 'Computer',
+    'COMPUTER': 'Computer',
     'English Language': 'English',
     'English Literature': 'English',
     'COMPUTER SCIENCE': 'Computer',
@@ -304,7 +419,17 @@ function normalizeSubject(s: string): string {
     'HINDI': 'Hindi',
     'COMMERCIAL STUDIES': 'Commercial Studies',
     'ENVIRONMENTAL SCIENCE': 'Environmental Science',
-    'PHYSICAL EDUCATION': 'Physical Education'
+    'PHYSICAL EDUCATION': 'Physical Education',
+    'COMMERCE': 'Commercial Studies',
+    'commerce': 'Commercial Studies',
+    'economics': 'Economics',
+    'english': 'English',
+    'hindi': 'Hindi',
+    'science': 'Science',
+    'SCIENCE': 'Science',
+    'socialscience': 'Social Science',
+    'SOCIAL SCIENCE': 'Social Science',
+    'Social Science': 'Social Science',
   };
   return map[s] || map[s.toUpperCase()] || s;
 }
@@ -421,6 +546,7 @@ async function parseCsvFile(filePath: string): Promise<{ chunks: ParsedChunk[]; 
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const targetOnly = args.includes('--target');
   const fileArgIdx = args.indexOf('--file');
   const specificFile = fileArgIdx >= 0 ? args[fileArgIdx + 1] : null;
 
@@ -433,7 +559,13 @@ async function main() {
   const files = specificFile
     ? [specificFile]
     : (await fs.readdir(UPLOAD_DIR))
-        .filter(f => !f.startsWith('.') && !f.endsWith('.db'))
+        .filter(f => {
+          if (f.startsWith('.') || f.endsWith('.db')) return false;
+          if (targetOnly) {
+            return f.startsWith('cbse-class-') || f.startsWith('isc-class12-');
+          }
+          return true;
+        })
         .map(f => path.join(UPLOAD_DIR, f));
 
   console.log(`Scanning ${files.length} file(s):\n${files.map(f => '  - ' + path.basename(f)).join('\n')}\n`);
@@ -470,7 +602,7 @@ async function main() {
     for (const chunk of parsed.chunks) {
       totalParsed++;
       // Check for duplicate
-      const isDup = await findDuplicate(chunk.title, chunk.content, chunk.subject);
+      const isDup = await findDuplicate(chunk.title, chunk.content, chunk.subject, chunk.board, chunk.className);
       if (isDup) {
         skipped++;
         totalSkipped++;

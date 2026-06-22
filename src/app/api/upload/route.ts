@@ -20,6 +20,14 @@ export async function POST(req: NextRequest) {
     let extractedText = '';
     let fileType = file.type || 'application/octet-stream';
 
+    // Auto-detect image mimetype if not populated
+    if (fileType === 'application/octet-stream' || !fileType) {
+      if (file.name.toLowerCase().endsWith('.png')) fileType = 'image/png';
+      else if (file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg')) fileType = 'image/jpeg';
+      else if (file.name.toLowerCase().endsWith('.webp')) fileType = 'image/webp';
+      else if (file.name.toLowerCase().endsWith('.gif')) fileType = 'image/gif';
+    }
+
     if (file.name.toLowerCase().endsWith('.pdf') || fileType === 'application/pdf') {
       try {
         const parser = new PDFParse({ data: new Uint8Array(buffer) });
@@ -29,6 +37,37 @@ export async function POST(req: NextRequest) {
       } catch (e: any) {
         // PDF might be image-only; fall back to text placeholder
         extractedText = `[PDF parsing failed: ${e.message}. Treat as scanned document — OCR not configured.]`;
+      }
+    } else if (fileType.startsWith('image/')) {
+      try {
+        const base64Image = buffer.toString('base64');
+        const imageUrl = `data:${fileType};base64,${base64Image}`;
+        const { callModel } = require('@/lib/models');
+        const response = await callModel({
+          preferredModel: 'llama_vision',
+          question: 'Extract all text, formulas, equations, tables, and diagrams from this image. Output the transcript in clean markdown. For math formulas, use LaTeX format (e.g. $...$ or $$...$$). Describe diagrams or charts in text or Mermaid syntax if applicable.',
+          hasImage: true,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Extract all text, formulas, equations, tables, and diagrams from this image. Output the transcript in clean markdown. For math formulas, use LaTeX format (e.g. $...$ or $$...$$). Describe diagrams or charts in text or Mermaid syntax if applicable.'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl
+                  }
+                }
+              ]
+            }
+          ]
+        });
+        extractedText = response.content || '';
+      } catch (err: any) {
+        extractedText = `[OCR Extraction failed: ${err.message}]`;
       }
     } else if (fileType.startsWith('text/') || file.name.match(/\.(txt|md|csv)$/i)) {
       extractedText = buffer.toString('utf-8');

@@ -100,3 +100,59 @@ model Upload {
   extractedText String @default("") @map("extracted_text")
   createdAt   DateTime @default(now()) @map("created_at")
 }
+
+model StudentProfile {
+  id               String    @id @default(cuid())
+  userId           String    @unique @map("user_id")
+  learningStyle    String    @default("Socratic") // Socratic | Analogy | Visual | Practical | Direct
+  interests        String    @default("[]")      // JSON list of interests
+  strengths        String    @default("[]")      // JSON list of strengths
+  weaknesses       String    @default("[]")      // JSON list of weaknesses
+  studyHabits      String    @default("{}")      // JSON object of habits
+  memoryLog        String    @default("[]")      // JSON array of key facts they struggle with
+  lastAIExtraction DateTime? @map("last_ai_extraction")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+}
+
+model StudyEvent {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  eventType String   @map("event_type") // tutor_chat | flashcard_recall | simulator_run | syllabus_toggle | mock_test
+  subject   String
+  topic     String
+  metadata  String   @default("")      // JSON string of details (score, correct/incorrect, timeSpent, etc.)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, eventType])
+  @@index([userId, subject])
+}
+
+model TimetableSlot {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  subject   String
+  topic     String
+  dayOfWeek String
+  timeStart String
+  timeEnd   String
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  date        String   // YYYY-MM-DD
+  title       String
+  completed   Boolean  @default(false)
+  delayedFrom String?  @map("delayed_from") // YYYY-MM-DD
+  delayReason String?  @map("delay_reason")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, date])
+}

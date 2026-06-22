@@ -77,7 +77,7 @@ export function StatChips({ variant = 'hero', className = '' }: StatChipsProps) 
         ];
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2.5 ${className}`}>
       {chips.map((chip, i) => (
         <motion.div
           key={chip.label}
@@ -86,12 +86,15 @@ export function StatChips({ variant = 'hero', className = '' }: StatChipsProps) 
           transition={{ delay: 0.05 * i, duration: 0.3 }}
         >
           <Badge
-            variant={variant === 'hero' ? 'secondary' : 'outline'}
-            className="gap-1.5 bg-card/70 backdrop-blur"
+            variant="outline"
+            className="gap-2 px-3 py-1 bg-card/45 border-black/5 dark:border-white/5 backdrop-blur-md shadow-xs hover:border-brand/40 transition-all duration-300 group"
           >
-            <chip.icon className="size-3 text-brand" />
-            <span className="font-semibold tabular-nums">{chip.value}</span>
-            <span className="text-muted-foreground">{chip.label}</span>
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand"></span>
+            </span>
+            <chip.icon className="size-3.5 text-brand transition-transform duration-200" />
+            <span className="font-semibold tabular-nums text-foreground">{chip.value}</span>
+            <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{chip.label}</span>
           </Badge>
         </motion.div>
       ))}

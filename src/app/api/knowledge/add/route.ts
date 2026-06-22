@@ -5,13 +5,14 @@ import { addKnowledge } from '@/lib/knowledge';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { subject, className, category, chapter, title, content, tags } = body;
+    const { subject, className, category, chapter, title, content, tags, board } = body;
 
     if (!subject || !category || !title || !content) {
       return NextResponse.json({ error: 'subject, category, title, content required' }, { status: 400 });
     }
 
     await addKnowledge({
+      board: board || 'ICSE',
       subject,
       className: className || '10',
       category,

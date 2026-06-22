@@ -8,8 +8,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  GraduationCap, Loader2, Lock, LogOut, Mail, User, UserCircle,
+  GraduationCap, Loader2, Lock, LogOut, Mail, User, UserCircle, Sun, Moon,
 } from 'lucide-react';
+import { useTheme } from 'next-themes';
+
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +45,10 @@ interface AuthUser {
 
 interface AuthBarProps {
   onBoardChange?: (board: string) => void;
+  user: AuthUser | null;
+  setUser: (user: AuthUser | null) => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
 }
 
 type Mode = 'login' | 'signup';
@@ -53,9 +59,10 @@ const BOARDS: Board[] = ['ICSE', 'CBSE'];
 // Main component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function AuthBar({ onBoardChange }: AuthBarProps) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthBar({ onBoardChange, user, setUser, loading, setLoading }: AuthBarProps) {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
 
   // Dialog + form state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -70,28 +77,119 @@ export function AuthBar({ onBoardChange }: AuthBarProps) {
 
   const [switchingBoard, setSwitchingBoard] = useState(false);
 
-  // ── On mount: fetch current user ─────────────────────────────────────────
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        if (data?.user) {
-          setUser(data.user);
-          onBoardChange?.(data.user.board);
-        }
-      } catch {
-        // network / parsing errors → stay signed out
-      } finally {
-        if (!cancelled) setLoading(false);
+    if (board !== 'ICSE' && !['9', '10'].includes(className)) {
+      setClassName('10');
+    }
+  }, [board, className]);
+
+  // Google Login Callback handler
+  const handleGoogleLoginCallback = async (response: any) => {
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error || 'Google Sign-in failed');
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
+      setUser(data.user);
+      onBoardChange?.(data.user.board);
+      setDialogOpen(false);
+      toast.success(`Welcome ${data.user.name || data.user.email}!`);
+    } catch {
+      toast.error('Network error during Google Sign-in');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Mock Google Login Callback helper for local testing
+  const handleMockGoogleLogin = async () => {
+    const fakePayload = {
+      email: 'mockuser@gmail.com',
+      name: 'Mock Google User',
+      sub: 'mock_google_id_123456'
     };
+    const fakeHeader = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).replace(/=/g, '');
+    const fakePayloadEncoded = btoa(JSON.stringify(fakePayload)).replace(/=/g, '');
+    const fakeSignature = 'fake_signature';
+    const fakeCredential = `${fakeHeader}.${fakePayloadEncoded}.${fakeSignature}`;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: fakeCredential }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error || 'Mock Login failed');
+        return;
+      }
+      setUser(data.user);
+      onBoardChange?.(data.user.board);
+      setDialogOpen(false);
+      toast.success(`Signed in as ${data.user.name || data.user.email} (Mock Google)`);
+    } catch {
+      toast.error('Network error during mock Google sign-in');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Load Google Identity Services script
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+    
+    script.onload = () => {
+      if (typeof window !== 'undefined' && (window as any).google) {
+        (window as any).google.accounts.id.initialize({
+          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '1035515286469-dummyclientid.apps.googleusercontent.com',
+          callback: handleGoogleLoginCallback,
+        });
+      }
+    };
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  // Render Google Sign-in button when dialog opens
+  useEffect(() => {
+    if (dialogOpen) {
+      setTimeout(() => {
+        try {
+          if (typeof window !== 'undefined' && (window as any).google) {
+            (window as any).google.accounts.id.initialize({
+              client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '1035515286469-dummyclientid.apps.googleusercontent.com',
+              callback: handleGoogleLoginCallback,
+            });
+            (window as any).google.accounts.id.renderButton(
+              document.getElementById('google-signin-btn'),
+              { theme: 'outline', size: 'large', width: 280 }
+            );
+          }
+        } catch (e) {
+          console.error('Failed to render Google Sign-in button:', e);
+        }
+      }, 300);
+    }
+  }, [dialogOpen, mode]);
+
+  // ── On mount: set mounted for theme selection ─────────────────────────────
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   // ── Reset form fields when opening the dialog ────────────────────────────
@@ -196,6 +294,29 @@ export function AuthBar({ onBoardChange }: AuthBarProps) {
     onBoardChange?.('ICSE');
   };
 
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
+  const renderThemeToggle = () => {
+    if (!mounted) return <div className="size-9 rounded-full bg-muted/40 animate-pulse" />;
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleTheme}
+        className="size-9 rounded-full text-foreground/70 hover:text-foreground hover:bg-muted/60 transition-all duration-200"
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? (
+          <Sun className="h-4 w-4 text-amber-500" />
+        ) : (
+          <Moon className="h-4 w-4 text-emerald-600" />
+        )}
+      </Button>
+    );
+  };
+
   // ── Loading skeleton (initial /me fetch) ─────────────────────────────────
   if (loading) {
     return (
@@ -209,19 +330,20 @@ export function AuthBar({ onBoardChange }: AuthBarProps) {
   if (!user) {
     return (
       <>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {renderThemeToggle()}
           <Button
             variant="ghost"
             size="sm"
             onClick={() => openDialog('login')}
-            className="text-foreground/80 hover:text-foreground"
+            className="text-foreground/80 hover:text-foreground hover:bg-muted/50"
           >
             Sign in
           </Button>
           <Button
             size="sm"
             onClick={() => openDialog('signup')}
-            className="bg-brand text-brand-foreground hover:bg-brand/90"
+            className="bg-brand text-brand-foreground hover:bg-brand/90 hover:scale-[1.02] transition-all shadow-sm gap-1.5"
           >
             <UserCircle className="size-4" />
             <span className="hidden sm:inline">Get started</span>
@@ -246,6 +368,7 @@ export function AuthBar({ onBoardChange }: AuthBarProps) {
           setClassName={setClassName}
           submitting={submitting}
           onSubmit={handleSubmit}
+          onMockGoogleLogin={handleMockGoogleLogin}
         />
       </>
     );
@@ -257,6 +380,7 @@ export function AuthBar({ onBoardChange }: AuthBarProps) {
   return (
     <>
       <div className="flex items-center gap-2">
+        {renderThemeToggle()}
         {/* Board toggle — desktop */}
         <div
           role="group"
@@ -391,6 +515,7 @@ interface AuthDialogProps {
   setClassName: (v: string) => void;
   submitting: boolean;
   onSubmit: (e: React.FormEvent) => void;
+  onMockGoogleLogin: () => void;
 }
 
 function AuthDialog(props: AuthDialogProps) {
@@ -398,12 +523,12 @@ function AuthDialog(props: AuthDialogProps) {
     open, onOpenChange, mode, setMode,
     name, setName, email, setEmail, password, setPassword,
     board, setBoard, className, setClassName,
-    submitting, onSubmit,
+    submitting, onSubmit, onMockGoogleLogin,
   } = props;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md bg-background/95 dark:bg-slate-900/95 backdrop-blur-xl border border-black/5 dark:border-white/5">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="grid size-7 place-items-center rounded-md bg-brand text-brand-foreground">
@@ -545,13 +670,47 @@ function AuthDialog(props: AuthDialogProps) {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="9">Class 9</SelectItem>
-                    <SelectItem value="10">Class 10</SelectItem>
+                    {board === 'ICSE' ? (
+                      Array.from({ length: 10 }, (_, i) => String(i + 1)).map((c) => (
+                        <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                      ))
+                    ) : (
+                      <>
+                        <SelectItem value="9">Class 9</SelectItem>
+                        <SelectItem value="10">Class 10</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             </>
           )}
+
+          {/* Or Continue with Google */}
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-border"></div>
+            <span className="flex-shrink mx-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Or continue with</span>
+            <div className="flex-grow border-t border-border"></div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div id="google-signin-btn" className="w-full flex justify-center min-h-[40px]"></div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onMockGoogleLogin}
+              disabled={submitting}
+              className="w-full border-brand/20 bg-brand-soft/5 hover:bg-brand-soft/20 text-brand text-xs font-bold gap-2 h-10 rounded-xl transition-all"
+            >
+              <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+              </svg>
+              Mock Google Sign-In
+            </Button>
+          </div>
 
           <DialogFooter className="mt-2 flex-row items-center justify-between gap-2 sm:justify-between">
             <p className="text-xs text-muted-foreground">

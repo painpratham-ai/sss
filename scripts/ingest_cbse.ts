@@ -9,7 +9,7 @@ async function main() {
   const before = await db.knowledgeChunk.count();
   console.log(`KB chunks before: ${before}\n`);
 
-  const raw = await fs.readFile('/home/z/my-project/upload/cbse_database.json', 'utf-8');
+  const raw = await fs.readFile('./upload/cbse_database.json', 'utf-8');
   const data = JSON.parse(raw);
 
   const withText = data.filter((d: any) => d.Text && d.Text.trim().length > 100);
@@ -95,7 +95,7 @@ async function main() {
 
   // Also ingest the resources guide as GENERAL board
   console.log('\n\nIngesting CBSE resources guide...');
-  const guide = await fs.readFile('/home/z/my-project/upload/cbse_resources_guide.md', 'utf-8');
+  const guide = await fs.readFile('./upload/cbse_resources_guide.md', 'utf-8');
   await db.knowledgeChunk.create({
     data: {
       board: 'CBSE',

@@ -1,0 +1,48 @@
+Based on modern trends in AI-driven EdTech, RAG (Retrieval-Augmented Generation), and student workflows, here are **12 highly useful and innovative features** that can be integrated into the board exam preparation and project generator platform:
+
+---
+
+### Category A: Interactive RAG & Retrieval Enhancements
+
+#### 1. Page-Level Citation & Source Highlights
+* **What it is**: In standard RAG, the AI displays a badge saying it used a specific PDF. With page-level citation, the AI highlights the exact paragraph and page number from the textbook/PDF.
+* **Why it's useful**: Students need to verify facts for board projects and exam answers. Clicking a source badge will scroll a PDF viewer on-screen directly to the cited page and highlight the relevant text in yellow.
+
+#### 2. Multimodal OCR RAG (Image-to-Equation & Diagram Search)
+* **What it is**: Students upload photos of their handwritten science notes, chemical formulas, mathematical derivations, or complex biology diagrams. 
+* **Why it's useful**: The system extracts the text/symbols using OCR and stores it in the vector/FTS database. The student can then chat with their handwritten notes or ask the AI: *"What does my drawing of the human heart on page 3 mean?"*
+
+#### 3. Board Syllabus Alignment Checker
+* **What it is**: A tool that cross-references the student's uploaded project or notes against the official ICSE/CBSE curriculum guidelines stored in the DB.
+* **Why it's useful**: It displays a compliance score (e.g., `85% Aligned`) and alerts the student if they missed mandatory topics, such as: *“Warning: Your physics refraction project does not cover the minimum deviation formula, which is required in Section 4.2 of the CISCE syllabus.”*
+
+---
+
+### Category B: AI-Driven Assessment & Evaluation
+
+#### 4. Specimen-Grade AI Answer Evaluator
+* **What it is**: A workspace where a student inputs a past board question and drafts their answer. The AI grades it using official marking schemes.
+* **Why it's useful**: It runs a multi-agent critique that tells the student e
+<truncated 1684 bytes>
+cks the topics the student got wrong in tutor chats or mock tests and dynamically crafts a custom exam paper targeting *only* those weaknesses.
+* **Why it's useful**: If the system detects the student struggles with *Electricity* and *Matrices*, the generated mock paper will be heavily weighted with those questions to force targeted practice.
+
+#### 9. Gamified Leaderboard & Study Streaks
+* **What it is**: A student dashboard displaying daily study points, streak counts, and milestones achieved (e.g., *"100 Chemistry Chunks read"*).
+* **Why it's useful**: Encourages daily engagement. Students earn badges like "RAG Reader" or "Specimen Master" as they progress through their syllabus checkmarks.
+
+---
+
+### Category D: Content & Visual Generation
+
+#### 10. Automatic Concept-Map & Mind-Map Generator
+* **What it is**: Converts a dense textbook chapter or past paper index into an interactive visual graph (mind map) using Mermaid.js or D3.js.
+* **Why it's useful**: Helps visual learners see how concepts connect. Clicking a node on the mind map (e.g., *"Electromagnetism"*) opens the corresponding grounded RAG chunks and tutor explanations.
+
+#### 11. Print-Ready Template Engine (DOCX / LaTeX)
+* **What it is**: An advanced project compiler that formats generated text into high-quality templates including cover pages, page numbers, bibliography, indexes, and placeholders for teacher signatures.
+* **Why it's useful**: Saves hours of manual MS Word formatting. Students can choose themes like "Scientific Journal", "Formal Specimen", or "Vintage Manuscript" and export in one click.
+
+#### 12. Smart Numerical Solver with "Change-Variables" Practice
+* **What it is**: An AI math and physics solver that extracts numerical problems from past papers and explains the step-by-step resolution.
+* **Why it's useful**: Once solved, it offers a "Practice Similar" button that alters the input numbers (e.g., changing $20\text{V}$ to $50\text{V}$) while preserving the formula structure, allowing students to test their understanding of the method.

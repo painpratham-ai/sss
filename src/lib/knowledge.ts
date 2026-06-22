@@ -43,8 +43,10 @@ export async function retrieve(query: string, opts: {
   category?: string;
   board?: string;
   topK?: number;
+  allowBoardFallback?: boolean;
 } = {}): Promise<RetrievedChunk[]> {
   const topK = opts.topK ?? 5;
+  const allowBoardFallback = opts.allowBoardFallback ?? false;
   const ftsQuery = buildFtsQuery(query);
 
   // If no FTS query (all terms too short), fall back to ILIKE on title
@@ -101,8 +103,8 @@ export async function retrieve(query: string, opts: {
       score: typeof r.score === 'number' ? r.score : Number(r.score)
     }));
 
-    // If board-filtered search returns too few, try without board filter (fallback)
-    if (chunks.length < 3 && opts.board) {
+    // If board-filtered search returns too few, try without board filter (fallback) if allowed
+    if (allowBoardFallback && chunks.length < 3 && opts.board) {
       const fallback = await retrieve(query, { ...opts, board: undefined, topK });
       // Merge, preferring board-matched chunks
       const seen = new Set(chunks.map(c => c.id));
@@ -133,7 +135,7 @@ function searchSeedChunks(query: string, opts: {
       score += (haystack.match(new RegExp(term, 'g')) || []).length;
     }
     if (opts.subject && c.subject.toLowerCase() === opts.subject.toLowerCase()) score *= 1.5;
-    if (opts.board && opts.board !== 'ICSE') score *= 0.1; // seeds are ICSE-only
+    if (opts.board && opts.board !== 'ICSE') score = 0; // seeds are ICSE-only
     return {
       id: `seed_${ICSE_SEED.indexOf(c)}`,
       board: 'ICSE', subject: c.subject, className: c.className, category: c.category,
@@ -192,9 +194,13 @@ export async function addKnowledge(chunk: {
   chapter: string;
   title: string;
   content: string;
-  tags: string;
+  tags: string | string[] | any;
   source?: string;
 }): Promise<void> {
+  const tagsStr = Array.isArray(chunk.tags)
+    ? chunk.tags.join(',')
+    : (typeof chunk.tags === 'string' ? chunk.tags : (chunk.tags ? String(chunk.tags) : ''));
+
   await db.knowledgeChunk.create({
     data: {
       board: chunk.board || 'ICSE',
@@ -204,7 +210,7 @@ export async function addKnowledge(chunk: {
       chapter: chunk.chapter,
       title: chunk.title,
       content: chunk.content,
-      tags: chunk.tags,
+      tags: tagsStr,
       source: chunk.source ?? 'user_upload'
     }
   });

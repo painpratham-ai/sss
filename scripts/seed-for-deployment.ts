@@ -63,7 +63,7 @@ print('FTS5 index created')
 
   // 4. Run smart ingest
   console.log('\n3. Running smart ingest...');
-  if (fs.access(UPLOAD_DIR).then(() => true).catch(() => false)) {
+  if (await fs.access(UPLOAD_DIR).then(() => true).catch(() => false)) {
     execSync('bun run scripts/smart-ingest.ts', { stdio: 'inherit' });
   }
 

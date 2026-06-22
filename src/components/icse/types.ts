@@ -33,6 +33,7 @@ export interface PipelineResponse {
   subject: string;
   className: string;
   topic: string;
+  board?: string;
   outline: Outline;
   finalOutput: string;
   images: PipelineImage[];
@@ -66,6 +67,8 @@ export interface MockQuestion {
   marks: number;
   answer?: string;
   choice?: string;
+  options?: string[];
+  answerIndex?: number;
 }
 
 export interface MockSection {
@@ -123,6 +126,24 @@ export interface UploadResponse {
   preview: string;
 }
 
+// Multi-project extraction types
+export interface ExtractedProject {
+  index: number;
+  title: string;
+  subject: string;
+  className: string;
+  topic: string;
+  extractedText: string;
+  selected: boolean;
+}
+
+export interface ForgeQueueItem {
+  project: ExtractedProject;
+  status: 'pending' | 'forging' | 'completed' | 'failed';
+  result?: PipelineResponse;
+  error?: string;
+}
+
 // 7-agent pipeline definition for UI visualization
 export interface AgentDef {
   name: string;
@@ -133,17 +154,22 @@ export interface AgentDef {
 
 export const PIPELINE_AGENTS: AgentDef[] = [
   { name: 'Analyzer', label: 'Analyzer', description: 'Identifies subject, class & key concepts from your upload', icon: 'FileSearch' },
-  { name: 'Outline', label: 'Outline', description: 'Builds ICSE-compliant project structure', icon: 'ListTree' },
-  { name: 'Writer', label: 'Writer', description: 'Drafts human, original, section-by-section prose', icon: 'PenLine' },
+  { name: 'Outline', label: 'Outline', description: 'Builds a comprehensive 15-25 section project structure', icon: 'ListTree' },
+  { name: 'Writer', label: 'Writer', description: 'Drafts detailed 400-800 word sections with examples & depth', icon: 'PenLine' },
+  { name: 'Depth Expander', label: 'Depth Expander', description: 'Identifies gaps and expands content with examples, case studies & data', icon: 'FileQuestion' },
   { name: 'Image Director', label: 'Image Director', description: 'Plans diagrams/figures the project needs', icon: 'Image' },
   { name: 'Image Generator', label: 'Image Generator', description: 'Generates clean labelled ICSE-style diagrams', icon: 'Palette' },
-  { name: 'Originality', label: 'Originality', description: 'Rewrites for uniqueness and human voice', icon: 'ShieldCheck' },
-  { name: 'Mock', label: 'Mock (optional)', description: 'Specimen-style mock paper for the topic', icon: 'FileQuestion' },
+  { name: 'Originality', label: 'Originality', description: 'Section-by-section rewriting for uniqueness and human voice', icon: 'ShieldCheck' },
 ];
 
 export const ICSE_SUBJECTS = [
   'Physics', 'Chemistry', 'Biology', 'Mathematics', 'History',
   'Geography', 'Civics', 'English', 'Computer', 'Economics', 'General',
+] as const;
+
+export const CBSE_SUBJECTS = [
+  'Science', 'Physics', 'Chemistry', 'Biology', 'Mathematics', 'Social Science', 'History',
+  'Geography', 'Civics', 'Economics', 'English', 'Computer Science', 'General',
 ] as const;
 
 export const KB_CATEGORIES = [

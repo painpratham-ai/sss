@@ -4,7 +4,7 @@ import { runPipeline } from '@/lib/agents';
 import { db } from '@/lib/db';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
       sourceName: sourceName || 'upload',
       userTopic, userSubject, userClass,
       board,
-      skipImages: skipImages ?? true // default to skipping images for stability
+      skipImages: skipImages ?? false,
+      webSearch: true // Enable web grounding by default for richer factual content
     });
 
     // Save results

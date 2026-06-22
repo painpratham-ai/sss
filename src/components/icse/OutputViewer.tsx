@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Copy, Download, FileQuestion, Loader2, ChevronRight,
+  Copy, Download, ChevronRight,
   ImageIcon, ListTree, ScrollText, Eye, EyeOff,
+  FileText, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -19,13 +20,13 @@ import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-  type PipelineResponse, type AgentLog, type MockPaper, type MockResponse,
+  type PipelineResponse, type AgentLog,
 } from './types';
-import { MockPaperCard } from './MockPaperCard';
 
 interface OutputViewerProps {
   result: PipelineResponse | null;
-  onMockGenerated?: (m: MockResponse) => void;
+  allResults?: PipelineResponse[];
+  onSelectResult?: (result: PipelineResponse) => void;
 }
 
 function copyToClipboard(text: string) {
@@ -47,10 +48,7 @@ function copyToClipboard(text: string) {
   return Promise.resolve();
 }
 
-export function OutputViewer({ result, onMockGenerated }: OutputViewerProps) {
-  const [generatingMock, setGeneratingMock] = useState(false);
-  const [mock, setMock] = useState<MockPaper | null>(null);
-  const [mockId, setMockId] = useState<string | null>(null);
+export function OutputViewer({ result, allResults, onSelectResult }: OutputViewerProps) {
 
   const safeImages = useMemo(() => {
     if (!result) return [];
@@ -102,42 +100,91 @@ export function OutputViewer({ result, onMockGenerated }: OutputViewerProps) {
     toast.success('Downloaded markdown file');
   };
 
-  const handleMock = async () => {
-    setGeneratingMock(true);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!result) return;
+    setDownloadingPdf(true);
     try {
-      const res = await fetch('/api/mock', {
+      toast.info('Generating school-ready PDF workbook...', { duration: 5000 });
+
+      const response = await fetch('/api/export-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subject: result.subject,
-          className: result.className,
-          topic: result.topic,
-          difficulty: 'medium',
-          projectId: result.projectId,
+          topic: result.topic || 'ICSE Project',
+          subject: result.subject || 'General',
+          className: result.className || '10',
+          board: result.board || 'ICSE',
+          outline: result.outline || { sections: [] },
+          finalOutput: result.finalOutput || '',
+          images: result.images || [],
+          studentName: '',
+          schoolName: '',
+          teacherName: '',
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Mock generation failed');
-      const m = data as MockResponse;
-      setMock(m.paper);
-      setMockId(m.id);
-      onMockGenerated?.(m);
-      toast.success('Mock paper generated');
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'PDF generation failed' }));
+        throw new Error(errData.error || `Server error ${response.status}`);
+      }
+
+      // Download the PDF blob
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (result.topic || 'icse-project')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      a.download = `${safeName || 'icse-project'}-workbook.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('Successfully exported school-ready project PDF!');
     } catch (err: any) {
-      toast.error(err?.message || 'Mock generation failed');
+      console.error('PDF export error:', err);
+      toast.error(`PDF generation failed: ${err.message}`);
     } finally {
-      setGeneratingMock(false);
+      setDownloadingPdf(false);
     }
   };
+
+
 
   return (
     <div className="space-y-4">
       <Card>
+        {allResults && allResults.length > 1 && (
+          <div className="flex flex-wrap gap-2 p-4 border-b border-black/5 dark:border-white/5 bg-muted/20 rounded-t-xl overflow-x-auto">
+            {allResults.map((res, i) => (
+              <Button
+                key={res.projectId}
+                variant={result?.projectId === res.projectId ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onSelectResult?.(res)}
+                className={[
+                  'gap-1.5 text-xs transition-all duration-200',
+                  result?.projectId === res.projectId
+                    ? 'bg-brand text-brand-foreground shadow-xs'
+                    : 'bg-background hover:bg-muted/55 border-brand-soft/20'
+                ].join(' ')}
+              >
+                <FileText className="size-3.5" />
+                <span className="max-w-[150px] truncate">{res.topic || `Project ${i + 1}`}</span>
+              </Button>
+            ))}
+          </div>
+        )}
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="space-y-1.5">
               <CardTitle className="flex items-center gap-2 text-xl">
-                <span className="grid size-7 place-items-center rounded-full bg-brand-soft text-brand text-sm font-bold">
+                <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-brand to-teal text-brand-foreground text-sm font-bold shadow-sm">
                   3
                 </span>
                 Forged output
@@ -169,19 +216,26 @@ export function OutputViewer({ result, onMockGenerated }: OutputViewerProps) {
                 </TooltipTrigger>
                 <TooltipContent>Download as markdown file</TooltipContent>
               </Tooltip>
-              <Button
-                size="sm"
-                onClick={handleMock}
-                disabled={generatingMock}
-                className="gap-1.5 bg-brand hover:bg-brand/90 text-brand-foreground"
-              >
-                {generatingMock ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <FileQuestion className="size-3.5" />
-                )}
-                Generate Mock
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadPdf}
+                    disabled={downloadingPdf}
+                    className="gap-1.5 bg-gradient-to-r from-emerald-600/10 to-teal-600/10 border-brand-soft hover:border-brand/40 text-brand font-medium"
+                  >
+                    {downloadingPdf ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="size-3.5" />
+                    )}
+                    PDF Workbook
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Download School-Ready PDF</TooltipContent>
+              </Tooltip>
+
             </div>
           </div>
         </CardHeader>
@@ -333,48 +387,11 @@ export function OutputViewer({ result, onMockGenerated }: OutputViewerProps) {
         </div>
       </div>
 
-      {/* Mock paper (below) */}
-      <AnimatePresence>
-        {(mock || generatingMock) && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <FileQuestion className="size-5 text-brand" />
-                  Mock Paper
-                  {mock && (
-                    <Badge variant="secondary" className="ml-auto">
-                      {mock.totalMarks ?? '—'} marks · {mock.duration ?? 60} min
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  Specimen-style mock paper generated for this topic.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {generatingMock ? (
-                  <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin text-brand" />
-                    Generating questions and marking scheme…
-                  </div>
-                ) : mock ? (
-                  <MockPaperCard paper={mock} id={mockId} />
-                ) : null}
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       <Separator />
     </div>
   );
 }
 
-// Re-exported for convenience
-export { MockPaperCard };
+
