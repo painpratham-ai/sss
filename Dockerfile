@@ -47,10 +47,7 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Create data directory for SQLite
-RUN mkdir -p /app/data /app/public/generated
-
-# Copy database (will be created on first run if not present)
-COPY --from=builder /app/db ./db
+RUN mkdir -p /app/data /app/public/generated /app/db
 
 # Copy ingestion scripts
 COPY --from=builder /app/scripts ./scripts
