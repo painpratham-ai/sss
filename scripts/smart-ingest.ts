@@ -61,21 +61,7 @@ async function findDuplicate(title: any, content: any, subject?: string, board?:
 
   const cacheKey = `${board || ''}|${subject || ''}|${className || ''}`;
   if (!matchCache[cacheKey]) {
-    const rawMatches = await db.knowledgeChunk.findMany({
-      where: {
-        ...(subject && { subject }),
-        ...(board && { board }),
-        ...(className && { className })
-      },
-      select: { title: true, content: true }
-    });
-    matchCache[cacheKey] = rawMatches.map(m => ({
-      title: m.title,
-      content: m.content,
-      normTitle: normalize(m.title),
-      fp: fingerprint(m.content),
-      contentStart: normalize(m.content.slice(0, 500))
-    }));
+    matchCache[cacheKey] = [];
   }
   const titleMatches = matchCache[cacheKey];
 
@@ -598,6 +584,26 @@ async function main() {
 
   const before = await db.knowledgeChunk.count({ where: { source: 'user_upload' } });
   console.log(`KB has ${before} user chunks currently\n`);
+
+  console.log('Pre-loading existing database chunks for fast duplicate checking...');
+  const allExisting = await db.knowledgeChunk.findMany({
+    select: { title: true, content: true, board: true, subject: true, className: true }
+  });
+  console.log(`Loaded ${allExisting.length} existing chunks.`);
+  
+  for (const m of allExisting) {
+    const cacheKey = `${m.board || ''}|${m.subject || ''}|${m.className || ''}`;
+    if (!matchCache[cacheKey]) {
+      matchCache[cacheKey] = [];
+    }
+    matchCache[cacheKey].push({
+      title: m.title,
+      content: m.content,
+      normTitle: normalize(m.title),
+      fp: fingerprint(m.content),
+      contentStart: normalize(m.content.slice(0, 500))
+    });
+  }
 
   // List files
   const files = specificFile
