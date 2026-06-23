@@ -21,6 +21,7 @@
     "@mdxeditor/editor": "^3.39.1",
     "@prisma/adapter-libsql": "^7.8.0",
     "@prisma/client": "^6.11.1",
+    "effect": "^3.12.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",
