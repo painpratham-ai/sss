@@ -9,7 +9,7 @@ import {
   FlaskConical, BookOpen, Gamepad2, Rocket, Trophy, Code,
   Music, Film, Compass, Cpu, Coins, Loader2, ArrowRight,
   Target, AlertCircle, Award, Compass as BuddyIcon, ShieldAlert,
-  Flame, BookOpenCheck as SpecimenIcon
+  Flame, BookOpenCheck as SpecimenIcon, User, Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,133 +28,23 @@ interface OnboardingWizardProps {
   onComplete: (user: AuthUser) => void;
 }
 
-// ─── 3D Hover Tilt Wrapper Component ──────────────────────────────────────────
-function TiltCard({
-  children,
-  onClick,
-  className = '',
-  selected = false,
-  glowColor = 'rgba(99, 102, 241, 0.4)' // default indigo glow
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  className?: string;
-  selected?: boolean;
-  glowColor?: string;
-}) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [rotateX, setRotateX] = useState(0);
-  const [rotateY, setRotateY] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    const mouseX = e.clientX - rect.left - width / 2;
-    const mouseY = e.clientY - rect.top - height / 2;
-    // Map bounds to -15deg to +15deg
-    const rY = (mouseX / (width / 2)) * 12;
-    const rX = -(mouseY / (height / 2)) * 12;
-    setRotateX(rX);
-    setRotateY(rY);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    setRotateX(0);
-    setRotateY(0);
-  };
-
-  return (
-    <motion.div
-      ref={cardRef}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={handleMouseLeave}
-      onClick={onClick}
-      style={{
-        perspective: 800,
-        transformStyle: 'preserve-3d'
-      }}
-      animate={{
-        scale: isHovered ? 1.03 : 1,
-        boxShadow: selected
-          ? `0 10px 30px -10px ${glowColor}, 0 0 0 2px ${glowColor}`
-          : isHovered
-          ? '0 20px 40px -15px rgba(0,0,0,0.7)'
-          : '0 4px 20px -10px rgba(0,0,0,0.5)'
-      }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className={`cursor-pointer overflow-hidden rounded-2xl border ${
-        selected
-          ? 'border-indigo-500 bg-indigo-950/20'
-          : 'border-slate-800 hover:border-slate-700 bg-slate-900/40 dark:bg-slate-950/40'
-      } transition-colors duration-200 ${className}`}
-    >
-      <motion.div
-        animate={{
-          rotateX: isHovered ? rotateX : 0,
-          rotateY: isHovered ? rotateY : 0,
-        }}
-        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-        style={{
-          transformStyle: 'preserve-3d',
-          height: '100%',
-          width: '100%'
-        }}
-      >
-        <div style={{ transform: 'translateZ(20px)', transformStyle: 'preserve-3d' }} className="h-full w-full">
-          {children}
-        </div>
-      </motion.div>
-    </motion.div>
-  );
+// ─── Vibration helper ──────────────────────────────────────────────────────────
+function vibrate(pattern: number | number[] = 30) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(pattern);
+    }
+  } catch {}
 }
 
-// Onboarding structures
+// ─── Data ──────────────────────────────────────────────────────────────────────
+
 const ONBOARD_LEARNING_STYLES = [
-  {
-    id: 'Socratic',
-    name: 'Socratic Method',
-    description: 'Guided questioning that helps you discover answers yourself.',
-    icon: HelpCircle,
-    color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
-    glow: 'rgba(99, 102, 241, 0.4)'
-  },
-  {
-    id: 'Analogy',
-    name: 'Analogy-based',
-    description: 'Relates science and math concepts to gaming, sports, or music.',
-    icon: Lightbulb,
-    color: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
-    glow: 'rgba(244, 63, 94, 0.4)'
-  },
-  {
-    id: 'Practical',
-    name: 'Practical Focus',
-    description: 'Emphasizes experiments, lab procedures, and real-world tools.',
-    icon: FlaskConical,
-    color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-    glow: 'rgba(16, 185, 129, 0.4)'
-  },
-  {
-    id: 'Visual',
-    name: 'Visual Schema',
-    description: 'Uses structured layouts, flowcharts, and mental ray diagrams.',
-    icon: Wand2,
-    color: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
-    glow: 'rgba(14, 165, 233, 0.4)'
-  },
-  {
-    id: 'Direct',
-    name: 'Direct & Concise',
-    description: 'Crisp notes, clear formulas, and direct textbook answers.',
-    icon: BookOpen,
-    color: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-    glow: 'rgba(245, 158, 11, 0.4)'
-  }
+  { id: 'Socratic', name: 'Socratic Method', description: 'Guided questioning that helps you discover answers yourself.', icon: HelpCircle, color: 'from-indigo-500 to-violet-600', glow: 'rgba(99, 102, 241, 0.5)' },
+  { id: 'Analogy', name: 'Analogy-based', description: 'Relates concepts to gaming, sports, or music.', icon: Lightbulb, color: 'from-pink-500 to-rose-600', glow: 'rgba(244, 63, 94, 0.5)' },
+  { id: 'Practical', name: 'Practical Focus', description: 'Emphasizes experiments, labs, and real-world tools.', icon: FlaskConical, color: 'from-emerald-500 to-teal-600', glow: 'rgba(16, 185, 129, 0.5)' },
+  { id: 'Visual', name: 'Visual Schema', description: 'Structured layouts, flowcharts, and mental diagrams.', icon: Wand2, color: 'from-sky-500 to-cyan-600', glow: 'rgba(14, 165, 233, 0.5)' },
+  { id: 'Direct', name: 'Direct & Concise', description: 'Crisp notes, clear formulas, direct answers.', icon: BookOpen, color: 'from-amber-500 to-orange-600', glow: 'rgba(245, 158, 11, 0.5)' }
 ];
 
 const ONBOARD_INTERESTS = [
@@ -175,36 +65,62 @@ const SUBJECTS_BY_BOARD: Record<string, string[]> = {
 };
 
 const TARGET_GOALS = [
-  { id: '95%+', label: 'Score 95%+ (Top Rank)', desc: 'Focus on high-yield exam board rubrics.', icon: Award, glow: 'rgba(234, 179, 8, 0.4)' },
-  { id: 'mastery', label: 'Master Fundamentals', desc: 'Prioritize deep scientific understanding.', icon: BrainCircuit, glow: 'rgba(99, 102, 241, 0.4)' },
-  { id: 'problems', label: 'Solve Hard Questions', desc: 'Focus on numericals and analytical reasoning.', icon: Target, glow: 'rgba(244, 63, 94, 0.4)' },
-  { id: 'consistency', label: 'Consistent Improvement', desc: 'A step-by-step revision planner routine.', icon: Flame, glow: 'rgba(16, 185, 129, 0.4)' }
+  { id: '95%+', label: 'Score 95%+', desc: 'Focus on high-yield exam rubrics.', icon: Award, color: 'from-yellow-500 to-amber-600', glow: 'rgba(234, 179, 8, 0.5)' },
+  { id: 'mastery', label: 'Master Fundamentals', desc: 'Deep scientific understanding.', icon: BrainCircuit, color: 'from-indigo-500 to-violet-600', glow: 'rgba(99, 102, 241, 0.5)' },
+  { id: 'problems', label: 'Solve Hard Problems', desc: 'Numericals & analytical reasoning.', icon: Target, color: 'from-pink-500 to-rose-600', glow: 'rgba(244, 63, 94, 0.5)' },
+  { id: 'consistency', label: 'Stay Consistent', desc: 'Step-by-step revision routine.', icon: Flame, color: 'from-emerald-500 to-teal-600', glow: 'rgba(16, 185, 129, 0.5)' }
 ];
 
 const STUDY_CHALLENGES = [
-  { id: 'formulas', label: 'Remembering Formulas & Terms', desc: 'Struggle with active recall and definitions.', icon: AlertCircle, glow: 'rgba(245, 158, 11, 0.4)' },
-  { id: 'derivations', label: 'Theories & Derivations', desc: 'Struggle with conceptual derivations and details.', icon: BookOpen, glow: 'rgba(14, 165, 233, 0.4)' },
-  { id: 'mock-tests', label: 'Mock Test Timing', desc: 'Struggle with completing papers under time stress.', icon: SpecimenIcon, glow: 'rgba(16, 185, 129, 0.4)' },
-  { id: 'scheduling', label: 'Time Management', desc: 'Struggle with study planning and consistency.', icon: Coins, glow: 'rgba(139, 92, 246, 0.4)' }
+  { id: 'formulas', label: 'Formulas & Terms', desc: 'Active recall struggles.', icon: AlertCircle, color: 'from-amber-500 to-orange-600', glow: 'rgba(245, 158, 11, 0.5)' },
+  { id: 'derivations', label: 'Theories & Derivations', desc: 'Conceptual detail gaps.', icon: BookOpen, color: 'from-sky-500 to-cyan-600', glow: 'rgba(14, 165, 233, 0.5)' },
+  { id: 'mock-tests', label: 'Mock Test Timing', desc: 'Time pressure issues.', icon: SpecimenIcon, color: 'from-emerald-500 to-teal-600', glow: 'rgba(16, 185, 129, 0.5)' },
+  { id: 'scheduling', label: 'Time Management', desc: 'Planning & consistency.', icon: Coins, color: 'from-violet-500 to-purple-600', glow: 'rgba(139, 92, 246, 0.5)' }
 ];
 
 const TUTOR_PERSONAS = [
-  { id: 'Encouraging Teacher', label: 'Encouraging Teacher', desc: 'Warm, highly patient, motivational.', avatar: '🌟', glow: 'rgba(234, 179, 8, 0.4)' },
-  { id: 'Strict Inspector', label: 'Strict Exam Inspector', desc: 'Rigorous, exam-focused, cuts no corners.', avatar: '📋', glow: 'rgba(239, 68, 68, 0.4)' },
-  { id: 'Research Scientist', label: 'Research Scientist', desc: 'In-depth explanations, theory-driven.', avatar: '🧬', glow: 'rgba(16, 185, 129, 0.4)' },
-  { id: 'Peer Buddy', label: 'Peer Study Buddy', desc: 'Casual, uses study hacks & slang.', avatar: '💬', glow: 'rgba(14, 165, 233, 0.4)' }
+  { id: 'Encouraging Teacher', label: 'Encouraging Teacher', desc: 'Warm, patient, motivational.', avatar: '🌟', color: 'from-yellow-500 to-amber-600', glow: 'rgba(234, 179, 8, 0.5)' },
+  { id: 'Strict Inspector', label: 'Strict Exam Inspector', desc: 'Rigorous, exam-focused.', avatar: '📋', color: 'from-red-500 to-rose-600', glow: 'rgba(239, 68, 68, 0.5)' },
+  { id: 'Research Scientist', label: 'Research Scientist', desc: 'In-depth, theory-driven.', avatar: '🧬', color: 'from-emerald-500 to-teal-600', glow: 'rgba(16, 185, 129, 0.5)' },
+  { id: 'Peer Buddy', label: 'Peer Study Buddy', desc: 'Casual, uses study hacks.', avatar: '💬', color: 'from-sky-500 to-cyan-600', glow: 'rgba(14, 165, 233, 0.5)' }
 ];
 
-// 3D step rotation motion settings
-const stepTransition3D = {
-  initial: { opacity: 0, rotateY: 75, z: -150, scale: 0.9 },
-  animate: { opacity: 1, rotateY: 0, z: 0, scale: 1 },
-  exit: { opacity: 0, rotateY: -75, z: -150, scale: 0.9 },
-  transition: { type: 'spring' as const, stiffness: 120, damping: 18 }
+// ─── Card transition variants ──────────────────────────────────────────────────
+const cardVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 400 : -400,
+    opacity: 0,
+    scale: 0.85,
+    rotateY: direction > 0 ? 25 : -25,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+    rotateY: 0,
+  },
+  exit: (direction: number) => ({
+    x: direction > 0 ? -400 : 400,
+    opacity: 0,
+    scale: 0.85,
+    rotateY: direction > 0 ? -25 : 25,
+  }),
 };
 
+const cardTransition = {
+  type: 'spring' as const,
+  stiffness: 300,
+  damping: 30,
+  mass: 0.8,
+};
+
+// Total question cards (welcome + 8 questions + calibration = 10 steps)
+const TOTAL_QUESTIONS = 8;
+
 export function OnboardingWizard({ initialUser, onComplete }: OnboardingWizardProps) {
-  const [step, setStep] = useState<number>(initialUser ? 2 : 1);
+  // step 0 = welcome/auth, steps 1-8 = questions, step 9 = calibration
+  const [step, setStep] = useState<number>(initialUser ? 1 : 0);
+  const [direction, setDirection] = useState(1);
   const [user, setUser] = useState<AuthUser | null>(initialUser);
   const [submitting, setSubmitting] = useState(false);
 
@@ -213,74 +129,66 @@ export function OnboardingWizard({ initialUser, onComplete }: OnboardingWizardPr
   const [board, setBoard] = useState<'ICSE' | 'CBSE'>(initialUser?.board as any || 'ICSE');
   const [className, setClassName] = useState(initialUser?.className || '10');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  
-  // Interactive choices
-  const [targetGoal, setTargetGoal] = useState('95%+');
-  const [studyChallenge, setStudyChallenge] = useState('formulas');
-  const [tutorPersona, setTutorPersona] = useState('Encouraging Teacher');
-
-  // Cognitive setup
-  const [learningStyle, setLearningStyle] = useState('Analogy');
+  const [targetGoal, setTargetGoal] = useState('');
+  const [studyChallenge, setStudyChallenge] = useState('');
+  const [tutorPersona, setTutorPersona] = useState('');
+  const [learningStyle, setLearningStyle] = useState('');
   const [interests, setInterests] = useState<string[]>([]);
-  
-  // Progress & verification
-  const [calibrationProgress, setCalibrationProgress] = useState(0);
-  const [syllabusHighlights, setSyllabusHighlights] = useState<any[]>([]);
-  const [loadingSyllabus, setLoadingSyllabus] = useState(false);
 
-  // Background floating 3D particle setup
+  // Calibration
+  const [calibrationProgress, setCalibrationProgress] = useState(0);
+
+  // Background particles
   const [particles, setParticles] = useState<any[]>([]);
 
   const toggleSubject = (sub: string) => {
+    vibrate(25);
     setSelectedSubjects((prev) =>
       prev.includes(sub) ? prev.filter((s) => s !== sub) : [...prev, sub]
     );
   };
 
   const toggleInterest = (id: string) => {
+    vibrate(20);
     setInterests((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
   };
 
-  const handleProfileSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      toast.error('Please enter your name');
-      return;
-    }
-    if (selectedSubjects.length === 0) {
-      toast.error('Please select at least one subject');
-      return;
-    }
-    setStep(3);
+  const goNext = () => {
+    vibrate(40);
+    setDirection(1);
+    setStep((s) => s + 1);
+  };
+
+  const goBack = () => {
+    vibrate(20);
+    setDirection(-1);
+    setStep((s) => s - 1);
   };
 
   useEffect(() => {
-    // Generate background floating shapes
-    const count = 12;
+    const count = 10;
     const shapes = Array.from({ length: count }, (_, i) => ({
       id: i,
-      size: Math.random() * 200 + 100,
+      size: Math.random() * 250 + 100,
       x: Math.random() * 100,
       y: Math.random() * 100,
-      duration: Math.random() * 20 + 20,
+      duration: Math.random() * 25 + 20,
       delay: Math.random() * -20,
-      color: i % 3 === 0 ? 'bg-indigo-500/10' : i % 3 === 1 ? 'bg-teal-500/10' : 'bg-fuchsia-500/10'
+      color: i % 4 === 0 ? 'bg-indigo-500/8' : i % 4 === 1 ? 'bg-teal-500/8' : i % 4 === 2 ? 'bg-fuchsia-500/8' : 'bg-amber-500/6'
     }));
     setParticles(shapes);
   }, []);
 
-  // Load Google Client
+  // Load Google Client for step 0
   useEffect(() => {
-    if (step !== 1) return;
-
+    if (step !== 0) return;
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
     document.body.appendChild(script);
-    
     script.onload = () => {
       if (typeof window !== 'undefined' && (window as any).google) {
         try {
@@ -293,14 +201,11 @@ export function OnboardingWizard({ initialUser, onComplete }: OnboardingWizardPr
             { theme: 'outline', size: 'large', width: 280 }
           );
         } catch (e) {
-          console.error('Failed to init google sign-in on mount:', e);
+          console.error('Failed to init google sign-in:', e);
         }
       }
     };
-
-    return () => {
-      document.body.removeChild(script);
-    };
+    return () => { try { document.body.removeChild(script); } catch {} };
   }, [step]);
 
   const handleGoogleLoginCallback = async (response: any) => {
@@ -312,57 +217,30 @@ export function OnboardingWizard({ initialUser, onComplete }: OnboardingWizardPr
         body: JSON.stringify({ credential: response.credential }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data?.error || 'Google Sign-in failed');
-        return;
-      }
+      if (!res.ok) { toast.error(data?.error || 'Google Sign-in failed'); return; }
       setUser(data.user);
       setName(data.user.name || '');
       setBoard(data.user.board || 'ICSE');
       setClassName(data.user.className || '10');
-      setStep(2);
+      vibrate([30, 50, 30]);
       toast.success(`Welcome ${data.user.name || data.user.email}!`);
-    } catch {
-      toast.error('Network error during Google Sign-in');
-    } finally {
-      setSubmitting(false);
-    }
+      setDirection(1);
+      setStep(1);
+    } catch { toast.error('Network error during Google Sign-in'); }
+    finally { setSubmitting(false); }
   };
 
-  const fetchSyllabusHighlights = useCallback(async (currentBoard: string, currentClass: string, sampleSubject: string) => {
-    if (!sampleSubject) return;
-    setLoadingSyllabus(true);
-    try {
-      const res = await fetch(`/api/syllabus?board=${currentBoard}&className=${currentClass}&subject=${sampleSubject}`);
-      const data = await res.json();
-      if (data.syllabusItems) {
-        setSyllabusHighlights(data.syllabusItems.slice(0, 3));
-      }
-    } catch (e) {
-      console.error('Failed to load syllabus preview:', e);
-    } finally {
-      setLoadingSyllabus(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (step === 4 && selectedSubjects.length > 0) {
-      fetchSyllabusHighlights(board, className, selectedSubjects[0]);
-    }
-  }, [step, board, className, selectedSubjects, fetchSyllabusHighlights]);
-
-  useEffect(() => {
-    if (board === 'CBSE' && !['4', '5', '6', '7', '8', '9', '10'].includes(className)) {
-      setClassName('10');
-    } else if (board === 'ICSE' && !['8', '9', '10', '11', '12'].includes(className)) {
-      setClassName('10');
-    }
+    if (board === 'CBSE' && !['4', '5', '6', '7', '8', '9', '10'].includes(className)) setClassName('10');
+    else if (board === 'ICSE' && !['8', '9', '10', '11', '12'].includes(className)) setClassName('10');
     const defaults = SUBJECTS_BY_BOARD[board] || [];
     setSelectedSubjects(defaults.slice(0, 3));
-  }, [board, className]);
+  }, [board]);
 
   const startCalibration = () => {
-    setStep(5);
+    vibrate([50, 80, 50]);
+    setDirection(1);
+    setStep(9);
     setCalibrationProgress(0);
     const interval = setInterval(() => {
       setCalibrationProgress((prev) => {
@@ -386,496 +264,685 @@ export function OnboardingWizard({ initialUser, onComplete }: OnboardingWizardPr
           name: name.trim(),
           board,
           className,
-          learningStyle,
+          learningStyle: learningStyle || 'Analogy',
           interests,
-          strengths: selectedSubjects, 
+          strengths: selectedSubjects,
           weaknesses: (SUBJECTS_BY_BOARD[board] || []).filter(s => !selectedSubjects.includes(s)),
-          targetScore: targetGoal,
-          painPoint: studyChallenge,
-          tutorPersona
+          targetScore: targetGoal || '95%+',
+          painPoint: studyChallenge || 'formulas',
+          tutorPersona: tutorPersona || 'Encouraging Teacher'
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update profile settings');
-      
+      if (!res.ok) throw new Error(data.error || 'Failed to update profile');
+      vibrate([30, 100, 30, 100, 50]);
       onComplete(data.user);
-      toast.success('Your AI Partner has been configured successfully!');
+      toast.success('Your AI Partner is calibrated! 🚀');
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Failed to save onboarding settings.');
-      setStep(4);
+      toast.error(err.message || 'Failed to save settings.');
+      setStep(8);
     }
   };
 
+  // Question step labels for progress
+  const questionLabels = [
+    'Welcome', 'Your Name', 'Board', 'Class', 'Subjects',
+    'Goal', 'Challenge', 'AI Persona', 'Learning Style & Interests',
+    'Calibrating'
+  ];
+
+  const canProceed = (s: number): boolean => {
+    switch (s) {
+      case 1: return name.trim().length > 0;
+      case 2: return !!board;
+      case 3: return !!className;
+      case 4: return selectedSubjects.length > 0;
+      case 5: return !!targetGoal;
+      case 6: return !!studyChallenge;
+      case 7: return !!tutorPersona;
+      case 8: return !!learningStyle;
+      default: return true;
+    }
+  };
+
+  const progress = step === 0 ? 0 : step >= 9 ? 100 : Math.round((step / TOTAL_QUESTIONS) * 100);
+
+  // ─── Render ────────────────────────────────────────────────────────────────────
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 overflow-y-auto px-4 py-8 perspective-[1200px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 overflow-hidden" style={{ perspective: '1200px' }}>
       
-      {/* 3D floating particle background layer */}
+      {/* Background particles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {particles.map((sh) => (
           <motion.div
             key={sh.id}
-            className={`absolute rounded-full blur-[80px] ${sh.color}`}
-            style={{
-              width: sh.size,
-              height: sh.size,
-              left: `${sh.x}%`,
-              top: `${sh.y}%`
-            }}
-            animate={{
-              x: [0, 40, -40, 0],
-              y: [0, -40, 40, 0],
-              scale: [1, 1.15, 0.9, 1]
-            }}
-            transition={{
-              duration: sh.duration,
-              delay: sh.delay,
-              repeat: Infinity,
-              ease: 'easeInOut'
-            }}
+            className={`absolute rounded-full blur-[100px] ${sh.color}`}
+            style={{ width: sh.size, height: sh.size, left: `${sh.x}%`, top: `${sh.y}%` }}
+            animate={{ x: [0, 50, -50, 0], y: [0, -50, 50, 0], scale: [1, 1.2, 0.85, 1] }}
+            transition={{ duration: sh.duration, delay: sh.delay, repeat: Infinity, ease: 'easeInOut' }}
           />
         ))}
       </div>
 
-      {/* Main Glassmorphic 3D Card Container */}
-      <div className="relative w-full max-w-2xl bg-slate-900/60 dark:bg-slate-950/60 border border-slate-800/80 rounded-3xl shadow-2xl backdrop-blur-xl p-6 md:p-10 min-h-[580px] flex flex-col justify-between text-white z-10">
-        
-        {/* Step progress with glowing neon bar */}
-        {step < 5 && (
-          <div className="space-y-3 mb-4">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-extrabold text-indigo-400 tracking-wider flex items-center gap-1.5">
-                <BrainCircuit className="size-4 text-indigo-400 animate-pulse" />
-                COGNITIVE CALIBRATION WIZARD
-              </span>
-              <span className="font-mono text-slate-400 font-bold">Step {step} of 4</span>
-            </div>
-            <div className="w-full bg-slate-800/50 rounded-full h-1.5 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-indigo-500 via-purple-500 to-teal-400 h-full rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(99,102,241,0.6)]" 
-                style={{ width: `${(step / 4) * 100}%` }}
-              />
-            </div>
+      {/* Progress bar — top */}
+      {step > 0 && step < 9 && (
+        <div className="absolute top-0 left-0 right-0 z-20">
+          <div className="h-1 bg-slate-800/60">
+            <motion.div
+              className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-teal-400 shadow-[0_0_12px_rgba(99,102,241,0.6)]"
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+            />
           </div>
-        )}
-
-        <div className="flex-1 flex flex-col justify-center my-auto overflow-x-hidden py-4">
-          <AnimatePresence mode="wait">
-            
-            {/* STEP 1: Welcome & Auth */}
-            {step === 1 && (
+          {/* Step dots */}
+          <div className="flex justify-center gap-2 py-3">
+            {Array.from({ length: TOTAL_QUESTIONS }, (_, i) => (
               <motion.div
-                key="step1"
-                {...stepTransition3D}
-                className="flex flex-col items-center text-center space-y-6"
-              >
-                <div className="relative size-24 flex items-center justify-center bg-indigo-500/10 rounded-full border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
-                  <div className="absolute inset-0 bg-indigo-500 rounded-full blur-lg opacity-30 animate-pulse" />
+                key={i}
+                className={`rounded-full transition-all duration-300 ${
+                  i + 1 === step
+                    ? 'w-8 h-2 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]'
+                    : i + 1 < step
+                    ? 'w-2 h-2 bg-indigo-400/70'
+                    : 'w-2 h-2 bg-slate-700'
+                }`}
+                layout
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Step label */}
+      {step > 0 && step < 9 && (
+        <div className="absolute top-12 left-0 right-0 z-20 flex justify-center">
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500">
+            {step} / {TOTAL_QUESTIONS} — {questionLabels[step]}
+          </span>
+        </div>
+      )}
+
+      {/* Main card container */}
+      <div className="relative w-full max-w-lg z-10 px-4" style={{ transformStyle: 'preserve-3d' }}>
+        <AnimatePresence mode="wait" custom={direction}>
+
+          {/* ─── STEP 0: Welcome & Auth ─────────────────────────── */}
+          {step === 0 && (
+            <motion.div
+              key="welcome"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <motion.div
+                  className="relative size-24 flex items-center justify-center bg-indigo-500/10 rounded-full border border-indigo-500/30"
+                  animate={{ boxShadow: ['0 0 20px rgba(99,102,241,0.2)', '0 0 40px rgba(99,102,241,0.4)', '0 0 20px rgba(99,102,241,0.2)'] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                >
                   <GraduationCap className="size-12 text-indigo-400 relative z-10" />
-                </div>
+                </motion.div>
 
                 <div className="space-y-2">
-                  <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-300 via-purple-300 to-teal-300 bg-clip-text text-transparent drop-shadow-md">
+                  <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-300 via-purple-300 to-teal-300 bg-clip-text text-transparent">
                     Forge Your Board Success
                   </h1>
-                  <p className="text-sm text-slate-400 max-w-md mx-auto">
-                    Design a personalized workspace and align your AI partner with your exact board curriculum, learning habits, and goals.
+                  <p className="text-sm text-slate-400 max-w-sm mx-auto">
+                    8 quick questions to calibrate your personalized AI study partner.
                   </p>
                 </div>
 
-                <div className="grid gap-3 w-full max-w-md text-left bg-slate-900/40 border border-slate-800/60 p-5 rounded-2xl">
+                <div className="grid gap-3 w-full max-w-sm text-left bg-slate-900/40 border border-slate-800/60 p-4 rounded-2xl">
                   <div className="flex items-start gap-3">
-                    <Sparkles className="size-4.5 text-indigo-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-slate-300">
-                      <strong>AI Agent Workbooks</strong>: Co-write 8,000+ word, 15+ section syllabus-compliant academic projects.
-                    </p>
+                    <Sparkles className="size-4 text-indigo-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-slate-300"><strong>AI Agent Workbooks</strong>: 8,000+ word, 15+ section academic projects.</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <BookOpenCheck className="size-4.5 text-teal-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-slate-300">
-                      <strong>Interactive Partner</strong>: Chat with a personalized tutor calibrated to your preferred communication style.
-                    </p>
+                    <BookOpenCheck className="size-4 text-teal-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-slate-300"><strong>Interactive Partner</strong>: Chat tutor calibrated to your style.</p>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-center gap-3 pt-4 w-full max-w-xs">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">SECURE ONBOARDING VIA GOOGLE</span>
+                <div className="flex flex-col items-center gap-3 pt-2 w-full max-w-xs">
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">SIGN IN TO BEGIN</span>
                   <div id="google-signin-btn-onboard" className="min-h-[40px] flex justify-center shadow-lg rounded-xl overflow-hidden"></div>
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {/* STEP 2: School Scope */}
-            {step === 2 && (
-              <motion.div
-                key="step2"
-                {...stepTransition3D}
-                className="space-y-5"
-              >
-                <div className="text-center space-y-1">
-                  <h3 className="text-xl font-bold bg-gradient-to-r from-indigo-300 to-teal-300 bg-clip-text text-transparent">Academic Scope</h3>
-                  <p className="text-xs text-slate-400">Establish your board constraints and subject profile.</p>
+          {/* ─── STEP 1: Name ─────────────────────────────────── */}
+          {step === 1 && (
+            <motion.div
+              key="name"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <User className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">What's your name?</h2>
+                  <p className="text-xs text-slate-400">Your AI partner will use this to personalize chats.</p>
                 </div>
+                <Input
+                  value={name}
+                  onChange={(e) => { setName(e.target.value); vibrate(10); }}
+                  placeholder="e.g. Aarav Sharma"
+                  autoFocus
+                  className="bg-slate-800/60 border-slate-700 text-center text-lg h-14 rounded-2xl focus:border-indigo-500 text-white placeholder:text-slate-600 max-w-xs"
+                />
+                <Button
+                  onClick={goNext}
+                  disabled={!canProceed(1)}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-12 text-sm font-bold gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.03] transition-transform"
+                >
+                  Continue <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
 
-                <form onSubmit={handleProfileSubmit} className="space-y-4 max-w-xl mx-auto">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="onboard-name" className="text-xs text-slate-400 font-bold">Your Full Name</Label>
-                    <Input
-                      id="onboard-name"
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Aarav Sharma"
-                      className="bg-slate-900/60 border-slate-800 text-sm h-11 rounded-xl focus:border-indigo-500 text-white"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-400 font-bold">Board Preferences</Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['ICSE', 'CBSE'].map((b) => {
-                          const active = board === b;
-                          return (
-                            <button
-                              key={b}
-                              type="button"
-                              onClick={() => setBoard(b as any)}
-                              className={`h-12 text-xs font-bold rounded-xl border flex items-center justify-center transition-all ${
-                                active
-                                  ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
-                                  : 'border-slate-850 hover:bg-slate-900/40 text-slate-400'
-                              }`}
-                            >
-                              {b} Board
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-400 font-bold">Class Level</Label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {board === 'CBSE' ? (
-                          ['4', '5', '6', '7', '8', '9', '10'].map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => setClassName(c)}
-                              className={`h-10 px-3 text-xs font-bold rounded-xl border flex items-center justify-center transition-all ${
-                                className === c
-                                  ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
-                                  : 'border-slate-850 hover:bg-slate-900/40 text-slate-400'
-                              }`}
-                            >
-                              Class {c}
-                            </button>
-                          ))
-                        ) : (
-                          ['8', '9', '10', '11', '12'].map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => setClassName(c)}
-                              className={`h-10 px-3 text-xs font-bold rounded-xl border flex items-center justify-center transition-all ${
-                                className === c
-                                  ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
-                                  : 'border-slate-850 hover:bg-slate-900/40 text-slate-400'
-                              }`}
-                            >
-                              Class {c}
-                            </button>
-                          ))
+          {/* ─── STEP 2: Board ────────────────────────────────── */}
+          {step === 2 && (
+            <motion.div
+              key="board"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <GraduationCap className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">Which board?</h2>
+                  <p className="text-xs text-slate-400">We'll align your syllabus and question patterns accordingly.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
+                  {(['ICSE', 'CBSE'] as const).map((b) => {
+                    const active = board === b;
+                    return (
+                      <motion.button
+                        key={b}
+                        onClick={() => { setBoard(b); vibrate(35); }}
+                        whileTap={{ scale: 0.93 }}
+                        className={`relative h-24 rounded-2xl border-2 text-lg font-extrabold flex flex-col items-center justify-center gap-1 transition-all duration-200 overflow-hidden ${
+                          active
+                            ? 'border-indigo-500 bg-indigo-500/15 text-indigo-300 shadow-[0_0_25px_rgba(99,102,241,0.25)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/40 text-slate-400 hover:text-slate-300'
+                        }`}
+                      >
+                        {active && (
+                          <motion.div
+                            layoutId="board-glow"
+                            className="absolute inset-0 bg-indigo-500/10 rounded-2xl"
+                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                          />
                         )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs text-slate-400 font-bold">Syllabus Subjects (Select 1 or more)</Label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {(SUBJECTS_BY_BOARD[board] || []).map((sub) => {
-                        const isSelected = selectedSubjects.includes(sub);
-                        return (
-                          <button
-                            key={sub}
-                            type="button"
-                            onClick={() => toggleSubject(sub)}
-                            className={`h-9 px-2 text-[10px] font-bold rounded-xl border flex items-center justify-between transition-all ${
-                              isSelected
-                                ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.1)]'
-                                : 'border-slate-850 hover:bg-slate-900/40 text-slate-400'
-                            }`}
-                          >
-                            <span>{sub}</span>
-                            {isSelected && <Check className="size-3 text-indigo-400 stroke-[3]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-3">
-                    <Button
-                      type="submit"
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-6 h-11 text-xs font-bold gap-1 shadow-lg hover:scale-[1.02] transition-transform"
-                    >
-                      Next: Goals & Persona
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </div>
-                </form>
-              </motion.div>
-            )}
-
-            {/* STEP 3: Interactive Persona & Goals */}
-            {step === 3 && (
-              <motion.div
-                key="step3"
-                {...stepTransition3D}
-                className="space-y-5"
-              >
-                <div className="text-center space-y-1">
-                  <h3 className="text-xl font-bold bg-gradient-to-r from-purple-300 to-indigo-300 bg-clip-text text-transparent">Interactive Personalization</h3>
-                  <p className="text-xs text-slate-400">Configure how the AI behaves during chat sessions.</p>
+                        <span className="relative z-10">{b}</span>
+                        <span className="relative z-10 text-[10px] font-medium opacity-60">Board</span>
+                        {active && <Check className="absolute top-2 right-2 size-4 text-indigo-400" />}
+                      </motion.button>
+                    );
+                  })}
                 </div>
-
-                <div className="space-y-4 max-w-xl mx-auto">
-                  
-                  {/* Goal selection */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-400 font-bold">1. Target Exam Goal</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {TARGET_GOALS.map((goal) => {
-                        const active = targetGoal === goal.id;
-                        return (
-                          <TiltCard
-                            key={goal.id}
-                            selected={active}
-                            glowColor={goal.glow}
-                            onClick={() => setTargetGoal(goal.id)}
-                            className="p-3.5 flex items-center gap-3"
-                          >
-                            <goal.icon className={`size-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} />
-                            <div className="text-left space-y-0.5">
-                              <h4 className="text-[11px] font-extrabold">{goal.label}</h4>
-                              <p className="text-[9px] text-slate-400 leading-tight">{goal.desc}</p>
-                            </div>
-                          </TiltCard>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Challenge Selection */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-400 font-bold">2. Biggest Study Challenge</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {STUDY_CHALLENGES.map((ch) => {
-                        const active = studyChallenge === ch.id;
-                        return (
-                          <TiltCard
-                            key={ch.id}
-                            selected={active}
-                            glowColor={ch.glow}
-                            onClick={() => setStudyChallenge(ch.id)}
-                            className="p-3.5 flex items-center gap-3"
-                          >
-                            <ch.icon className={`size-5 ${active ? 'text-amber-400' : 'text-slate-400'}`} />
-                            <div className="text-left space-y-0.5">
-                              <h4 className="text-[11px] font-extrabold">{ch.label}</h4>
-                              <p className="text-[9px] text-slate-400 leading-tight">{ch.desc}</p>
-                            </div>
-                          </TiltCard>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Tutor Persona */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-400 font-bold">3. Preferred AI Partner Persona</Label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {TUTOR_PERSONAS.map((p) => {
-                        const active = tutorPersona === p.id;
-                        return (
-                          <TiltCard
-                            key={p.id}
-                            selected={active}
-                            glowColor={p.glow}
-                            onClick={() => setTutorPersona(p.id)}
-                            className="p-2.5 flex flex-col items-center justify-center text-center h-24"
-                          >
-                            <span className="text-2xl mb-1">{p.avatar}</span>
-                            <h4 className="text-[10px] font-extrabold leading-tight">{p.label}</h4>
-                            <p className="text-[8px] text-slate-500 mt-0.5 line-clamp-1">{p.desc}</p>
-                          </TiltCard>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                </div>
-
-                <div className="flex justify-between items-center pt-3 max-w-xl mx-auto">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setStep(2)}
-                    className="rounded-xl px-4 h-10 text-xs font-medium text-slate-400 hover:text-white"
-                  >
+                <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
                     <ChevronLeft className="size-4" /> Back
                   </Button>
-                  <Button
-                    onClick={() => setStep(4)}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-6 h-10 text-xs font-bold gap-1 shadow-lg"
-                  >
-                    Next: Calibrate
-                    <ChevronRight className="size-4" />
+                  <Button onClick={goNext} disabled={!canProceed(2)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg disabled:opacity-40 hover:scale-[1.03] transition-transform">
+                    Continue <ChevronRight className="size-4" />
                   </Button>
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {/* STEP 4: Cognitive Styles & Calibration */}
-            {step === 4 && (
-              <motion.div
-                key="step4"
-                {...stepTransition3D}
-                className="space-y-5"
-              >
-                <div className="text-center space-y-1">
-                  <h3 className="text-xl font-bold bg-gradient-to-r from-teal-300 to-indigo-300 bg-clip-text text-transparent">Cognitive Styles & Syllabus Match</h3>
-                  <p className="text-xs text-slate-400">Final calibration before entry.</p>
+          {/* ─── STEP 3: Class ────────────────────────────────── */}
+          {step === 3 && (
+            <motion.div
+              key="class"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <BookOpen className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">What class are you in?</h2>
+                  <p className="text-xs text-slate-400">This determines your syllabus scope and difficulty level.</p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 max-w-sm">
+                  {(board === 'CBSE' ? ['4','5','6','7','8','9','10'] : ['8','9','10','11','12']).map((c) => {
+                    const active = className === c;
+                    return (
+                      <motion.button
+                        key={c}
+                        onClick={() => { setClassName(c); vibrate(30); }}
+                        whileTap={{ scale: 0.88 }}
+                        className={`relative size-14 rounded-2xl border-2 text-sm font-extrabold flex items-center justify-center transition-all duration-200 ${
+                          active
+                            ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/40 text-slate-400 hover:text-slate-300'
+                        }`}
+                      >
+                        {c}
+                        {active && <motion.div layoutId="class-ring" className="absolute inset-0 border-2 border-amber-400 rounded-2xl" transition={{ type: 'spring', stiffness: 400, damping: 25 }} />}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
+                    <ChevronLeft className="size-4" /> Back
+                  </Button>
+                  <Button onClick={goNext} disabled={!canProceed(3)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg disabled:opacity-40 hover:scale-[1.03] transition-transform">
+                    Continue <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ─── STEP 4: Subjects ─────────────────────────────── */}
+          {step === 4 && (
+            <motion.div
+              key="subjects"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-5">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <BookOpenCheck className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">Pick your subjects</h2>
+                  <p className="text-xs text-slate-400">Select one or more subjects you want to focus on.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
+                  {(SUBJECTS_BY_BOARD[board] || []).map((sub) => {
+                    const isSelected = selectedSubjects.includes(sub);
+                    return (
+                      <motion.button
+                        key={sub}
+                        onClick={() => toggleSubject(sub)}
+                        whileTap={{ scale: 0.92 }}
+                        className={`h-11 px-3 text-xs font-bold rounded-xl border-2 flex items-center justify-between transition-all duration-200 ${
+                          isSelected
+                            ? 'border-pink-500 bg-pink-500/15 text-pink-300 shadow-[0_0_15px_rgba(244,63,94,0.2)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/40 text-slate-400 hover:text-slate-300'
+                        }`}
+                      >
+                        <span>{sub}</span>
+                        {isSelected && <Check className="size-4 text-pink-400 stroke-[3]" />}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
+                    <ChevronLeft className="size-4" /> Back
+                  </Button>
+                  <Button onClick={goNext} disabled={!canProceed(4)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg disabled:opacity-40 hover:scale-[1.03] transition-transform">
+                    Continue <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ─── STEP 5: Target Goal ──────────────────────────── */}
+          {step === 5 && (
+            <motion.div
+              key="goal"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-5">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <Target className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">What's your goal?</h2>
+                  <p className="text-xs text-slate-400">This shapes how your AI prioritizes content.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-2.5 w-full max-w-sm">
+                  {TARGET_GOALS.map((goal, idx) => {
+                    const active = targetGoal === goal.id;
+                    return (
+                      <motion.button
+                        key={goal.id}
+                        onClick={() => { setTargetGoal(goal.id); vibrate(35); }}
+                        whileTap={{ scale: 0.95 }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.08 }}
+                        className={`relative p-4 rounded-2xl border-2 flex items-center gap-4 text-left transition-all duration-200 ${
+                          active
+                            ? 'border-amber-500/70 bg-amber-500/10 shadow-[0_0_25px_rgba(234,179,8,0.2)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/30 hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <div className={`size-10 rounded-xl bg-gradient-to-br ${goal.color} flex items-center justify-center shrink-0 shadow-md`}>
+                          <goal.icon className="size-5 text-white" />
+                        </div>
+                        <div>
+                          <h4 className={`text-sm font-bold ${active ? 'text-white' : 'text-slate-300'}`}>{goal.label}</h4>
+                          <p className="text-[10px] text-slate-500">{goal.desc}</p>
+                        </div>
+                        {active && <Check className="size-5 text-amber-400 ml-auto shrink-0" />}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
+                    <ChevronLeft className="size-4" /> Back
+                  </Button>
+                  <Button onClick={goNext} disabled={!canProceed(5)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg disabled:opacity-40 hover:scale-[1.03] transition-transform">
+                    Continue <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ─── STEP 6: Study Challenge ──────────────────────── */}
+          {step === 6 && (
+            <motion.div
+              key="challenge"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-5">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <AlertCircle className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">Biggest challenge?</h2>
+                  <p className="text-xs text-slate-400">Your AI will focus extra on overcoming this.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-2.5 w-full max-w-sm">
+                  {STUDY_CHALLENGES.map((ch, idx) => {
+                    const active = studyChallenge === ch.id;
+                    return (
+                      <motion.button
+                        key={ch.id}
+                        onClick={() => { setStudyChallenge(ch.id); vibrate(35); }}
+                        whileTap={{ scale: 0.95 }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.08 }}
+                        className={`relative p-4 rounded-2xl border-2 flex items-center gap-4 text-left transition-all duration-200 ${
+                          active
+                            ? 'border-rose-500/70 bg-rose-500/10 shadow-[0_0_25px_rgba(244,63,94,0.2)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/30 hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <div className={`size-10 rounded-xl bg-gradient-to-br ${ch.color} flex items-center justify-center shrink-0 shadow-md`}>
+                          <ch.icon className="size-5 text-white" />
+                        </div>
+                        <div>
+                          <h4 className={`text-sm font-bold ${active ? 'text-white' : 'text-slate-300'}`}>{ch.label}</h4>
+                          <p className="text-[10px] text-slate-500">{ch.desc}</p>
+                        </div>
+                        {active && <Check className="size-5 text-rose-400 ml-auto shrink-0" />}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
+                    <ChevronLeft className="size-4" /> Back
+                  </Button>
+                  <Button onClick={goNext} disabled={!canProceed(6)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg disabled:opacity-40 hover:scale-[1.03] transition-transform">
+                    Continue <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ─── STEP 7: AI Persona ───────────────────────────── */}
+          {step === 7 && (
+            <motion.div
+              key="persona"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-5">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <BrainCircuit className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-extrabold text-white">Pick your AI persona</h2>
+                  <p className="text-xs text-slate-400">Choose how your AI partner communicates.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
+                  {TUTOR_PERSONAS.map((p, idx) => {
+                    const active = tutorPersona === p.id;
+                    return (
+                      <motion.button
+                        key={p.id}
+                        onClick={() => { setTutorPersona(p.id); vibrate(35); }}
+                        whileTap={{ scale: 0.92 }}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: idx * 0.1 }}
+                        className={`relative p-4 rounded-2xl border-2 flex flex-col items-center justify-center text-center h-28 transition-all duration-200 overflow-hidden ${
+                          active
+                            ? 'border-violet-500/70 bg-violet-500/10 shadow-[0_0_25px_rgba(139,92,246,0.25)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/30 hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <span className="text-3xl mb-1.5">{p.avatar}</span>
+                        <h4 className={`text-xs font-bold ${active ? 'text-white' : 'text-slate-300'}`}>{p.label}</h4>
+                        <p className="text-[9px] text-slate-500 mt-0.5">{p.desc}</p>
+                        {active && <Check className="absolute top-2 right-2 size-4 text-violet-400" />}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
+                    <ChevronLeft className="size-4" /> Back
+                  </Button>
+                  <Button onClick={goNext} disabled={!canProceed(7)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg disabled:opacity-40 hover:scale-[1.03] transition-transform">
+                    Continue <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ─── STEP 8: Learning Style & Interests ───────────── */}
+          {step === 8 && (
+            <motion.div
+              key="style"
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={cardTransition}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-8 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center space-y-5">
+                <motion.div
+                  className="size-16 rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-600 flex items-center justify-center shadow-lg"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                >
+                  <Wand2 className="size-8 text-white" />
+                </motion.div>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-extrabold text-white">How do you learn best?</h2>
+                  <p className="text-xs text-slate-400">Pick a style + your hobbies for better analogies.</p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  
-                  {/* Cognitive details */}
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-400 font-bold">1. Explanation Style</Label>
-                      <div className="grid grid-cols-1 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
-                        {ONBOARD_LEARNING_STYLES.map((style) => {
-                          const active = learningStyle === style.id;
-                          return (
-                            <button
-                              key={style.id}
-                              type="button"
-                              onClick={() => setLearningStyle(style.id)}
-                              className={`p-2.5 text-left border rounded-xl flex items-center gap-2.5 transition-all ${
-                                active
-                                  ? 'border-indigo-500 bg-indigo-500/10'
-                                  : 'border-slate-850 hover:bg-slate-900/40'
-                              }`}
-                            >
-                              <div className={`size-7 rounded-lg flex items-center justify-center shrink-0 border ${style.color}`}>
-                                <style.icon className="size-3.5" />
-                              </div>
-                              <div className="space-y-0.5">
-                                <h4 className="text-[10px] font-bold">{style.name}</h4>
-                                <p className="text-[8px] text-slate-400 line-clamp-1">{style.description}</p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-400 font-bold">2. Personal Hobbies (for AI analogies)</Label>
-                      <div className="flex flex-wrap gap-1 max-h-[100px] overflow-y-auto pr-1">
-                        {ONBOARD_INTERESTS.map((int) => {
-                          const isSelected = interests.includes(int.id);
-                          return (
-                            <button
-                              key={int.id}
-                              type="button"
-                              onClick={() => toggleInterest(int.id)}
-                              className={`h-7 px-2 text-[9px] font-bold rounded-lg border flex items-center gap-1 transition-all ${
-                                isSelected
-                                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
-                                  : 'border-slate-850 hover:bg-slate-900/40 text-slate-400'
-                              }`}
-                            >
-                              <int.icon className="size-3" />
-                              <span>{int.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Column: Specimen match highlights */}
-                  <div className="bg-slate-950/50 border border-slate-850 p-4 rounded-2xl flex flex-col justify-between shadow-inner">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-teal-400">
-                        <BookOpenCheck className="size-4 animate-pulse" />
-                        Syllabus Index Matching
-                      </div>
-                      <p className="text-[9px] text-slate-400 leading-relaxed">
-                        Retrieved active Board specifications matching your Class {className} {selectedSubjects[0] || 'Curriculum'} configurations.
-                      </p>
-
-                      {loadingSyllabus ? (
-                        <div className="flex items-center gap-2 py-4 justify-center">
-                          <Loader2 className="size-4 animate-spin text-indigo-400" />
-                          <span className="text-[9px] text-slate-400 font-mono">Querying SQL chunks...</span>
+                {/* Learning styles */}
+                <div className="grid grid-cols-1 gap-1.5 w-full max-w-sm max-h-[180px] overflow-y-auto pr-1">
+                  {ONBOARD_LEARNING_STYLES.map((style, idx) => {
+                    const active = learningStyle === style.id;
+                    return (
+                      <motion.button
+                        key={style.id}
+                        onClick={() => { setLearningStyle(style.id); vibrate(30); }}
+                        whileTap={{ scale: 0.96 }}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.06 }}
+                        className={`p-3 rounded-xl border-2 flex items-center gap-3 text-left transition-all duration-200 ${
+                          active
+                            ? 'border-sky-500/70 bg-sky-500/10 shadow-[0_0_15px_rgba(14,165,233,0.2)]'
+                            : 'border-slate-700 hover:border-slate-600 bg-slate-800/30'
+                        }`}
+                      >
+                        <div className={`size-8 rounded-lg bg-gradient-to-br ${style.color} flex items-center justify-center shrink-0`}>
+                          <style.icon className="size-4 text-white" />
                         </div>
-                      ) : syllabusHighlights.length > 0 ? (
-                        <div className="space-y-1.5 py-1">
-                          {syllabusHighlights.map((sh, index) => (
-                            <div key={sh.id || index} className="text-[9px] leading-relaxed border-l-2 border-slate-700 pl-2 py-0.5 text-slate-300">
-                              <span className="font-bold text-slate-200 block">{sh.topic}: {sh.subtopic}</span>
-                              <span className="text-slate-400 line-clamp-1 block">{sh.guideline}</span>
-                            </div>
-                          ))}
+                        <div>
+                          <h4 className={`text-[11px] font-bold ${active ? 'text-white' : 'text-slate-300'}`}>{style.name}</h4>
+                          <p className="text-[9px] text-slate-500 line-clamp-1">{style.description}</p>
                         </div>
-                      ) : (
-                        <div className="text-[9px] text-slate-500 py-4 text-center font-mono">
-                          Standard {board} specifications verified in index.
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="text-[8px] text-slate-500 text-center border-t border-slate-900 pt-2 font-mono">
-                      Cognitive map: {learningStyle} / Persona: {tutorPersona}
-                    </div>
-                  </div>
-
+                        {active && <Check className="size-4 text-sky-400 ml-auto shrink-0" />}
+                      </motion.button>
+                    );
+                  })}
                 </div>
 
-                <div className="flex justify-between items-center pt-3">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setStep(3)}
-                    className="rounded-xl px-4 h-10 text-xs font-medium text-slate-400 hover:text-white"
-                  >
+                {/* Interests */}
+                <div className="w-full max-w-sm">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-2">Hobbies (for better analogies)</p>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {ONBOARD_INTERESTS.map((int) => {
+                      const isSelected = interests.includes(int.id);
+                      return (
+                        <motion.button
+                          key={int.id}
+                          onClick={() => toggleInterest(int.id)}
+                          whileTap={{ scale: 0.9 }}
+                          className={`h-8 px-2.5 text-[10px] font-bold rounded-full border flex items-center gap-1.5 transition-all ${
+                            isSelected
+                              ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                              : 'border-slate-700 bg-slate-800/30 text-slate-400 hover:text-slate-300'
+                          }`}
+                        >
+                          <int.icon className="size-3" />
+                          {int.label}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <Button variant="ghost" onClick={goBack} className="rounded-2xl px-4 h-11 text-xs text-slate-400 hover:text-white">
                     <ChevronLeft className="size-4" /> Back
                   </Button>
                   <Button
                     onClick={startCalibration}
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl px-6 h-10 text-xs font-bold gap-1 shadow-lg shadow-indigo-600/30 hover:scale-[1.02] transition-transform"
+                    disabled={!canProceed(8)}
+                    className="bg-gradient-to-r from-indigo-600 via-purple-600 to-teal-500 hover:from-indigo-500 hover:via-purple-500 hover:to-teal-400 text-white rounded-2xl px-8 h-11 text-sm font-bold gap-2 shadow-lg shadow-indigo-600/30 disabled:opacity-40 hover:scale-[1.03] transition-transform"
                   >
-                    Calibrate & Enter Workspace
-                    <ArrowRight className="size-4" />
+                    <Zap className="size-4" /> Calibrate & Launch
                   </Button>
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {/* STEP 5: Calibration Animation */}
-            {step === 5 && (
-              <motion.div
-                key="step5"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center py-12 space-y-6 text-center"
-              >
-                {/* 3D rotating progress circle */}
-                <div className="relative size-28 flex items-center justify-center bg-indigo-500/10 rounded-full border border-indigo-500/30 shadow-[0_0_20px_rgba(99,102,241,0.3)]">
+          {/* ─── STEP 9: Calibration ──────────────────────────── */}
+          {step === 9 && (
+            <motion.div
+              key="calibration"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+              className="bg-slate-900/70 border border-slate-800/80 rounded-3xl backdrop-blur-2xl p-10 md:p-14 shadow-2xl"
+            >
+              <div className="flex flex-col items-center justify-center space-y-7 text-center">
+                <div className="relative size-28 flex items-center justify-center bg-indigo-500/10 rounded-full border border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.3)]">
                   <motion.div
                     className="absolute inset-0 rounded-full border-2 border-indigo-500 border-t-transparent"
                     animate={{ rotate: 360 }}
@@ -888,35 +955,35 @@ export function OnboardingWizard({ initialUser, onComplete }: OnboardingWizardPr
                   />
                   <BrainCircuit className="size-12 text-indigo-400 relative z-10" />
                 </div>
-                
+
                 <div className="space-y-2">
-                  <h3 className="text-lg font-bold text-white tracking-wide">Syncing Second Brain Weights</h3>
-                  <p className="text-xs text-slate-400 font-mono h-5 transition-all duration-300">
+                  <h3 className="text-xl font-extrabold text-white tracking-wide">Syncing Your AI Brain</h3>
+                  <p className="text-xs text-slate-400 font-mono h-5">
                     {calibrationProgress < 20 && 'Resolving board spec files...'}
-                    {calibrationProgress >= 20 && calibrationProgress < 40 && `Seeding target focus: ${targetGoal}...`}
-                    {calibrationProgress >= 40 && calibrationProgress < 60 && `Customizing challenge buffers for ${studyChallenge}...`}
-                    {calibrationProgress >= 60 && calibrationProgress < 80 && `Calibrating ${tutorPersona} tone maps...`}
-                    {calibrationProgress >= 80 && calibrationProgress < 95 && `Mapping explainers: ${learningStyle} method...`}
-                    {calibrationProgress >= 95 && 'Synchronization complete!'}
+                    {calibrationProgress >= 20 && calibrationProgress < 40 && `Seeding target: ${targetGoal}...`}
+                    {calibrationProgress >= 40 && calibrationProgress < 60 && `Tuning challenge buffers...`}
+                    {calibrationProgress >= 60 && calibrationProgress < 80 && `Calibrating ${tutorPersona} tone...`}
+                    {calibrationProgress >= 80 && calibrationProgress < 95 && `Mapping ${learningStyle} method...`}
+                    {calibrationProgress >= 95 && '✓ Synchronization complete!'}
                   </p>
                 </div>
 
-                <div className="w-full max-w-xs bg-slate-800 rounded-full h-2 overflow-hidden shadow-inner">
-                  <div
-                    className="bg-gradient-to-r from-indigo-500 via-purple-500 to-teal-400 h-full rounded-full transition-all duration-100"
-                    style={{ width: `${calibrationProgress}%` }}
+                <div className="w-full max-w-xs bg-slate-800 rounded-full h-2.5 overflow-hidden shadow-inner">
+                  <motion.div
+                    className="bg-gradient-to-r from-indigo-500 via-purple-500 to-teal-400 h-full rounded-full shadow-[0_0_10px_rgba(99,102,241,0.4)]"
+                    animate={{ width: `${calibrationProgress}%` }}
+                    transition={{ duration: 0.1 }}
                   />
                 </div>
 
-                <span className="text-xs font-bold text-indigo-400 font-mono bg-indigo-950/40 px-3 py-1 rounded-full border border-indigo-900/40">
+                <span className="text-sm font-extrabold text-indigo-400 font-mono bg-indigo-950/40 px-4 py-1.5 rounded-full border border-indigo-900/40">
                   {calibrationProgress}%
                 </span>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-          </AnimatePresence>
-        </div>
-
+        </AnimatePresence>
       </div>
     </div>
   );
